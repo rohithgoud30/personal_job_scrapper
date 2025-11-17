@@ -3,13 +3,13 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export const env = {
-  openRouterApiKey: process.env.OPENROUTER_API_KEY ?? '',
-  openRouterBaseUrl: process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1',
+  zAiApiKey: process.env.ZAI_API_KEY ?? '',
+  zAiBaseUrl: process.env.ZAI_BASE_URL ?? 'https://api.z.ai/api/paas/v4/',
   keywordBatchSize: Number(process.env.KEYWORD_BATCH_SIZE ?? '5') || 5,
   runDateOverride: (process.env.TEST_RUN_DATE ?? '').trim()
 };
 
-export function requireEnv(name: 'openRouterApiKey' | 'openRouterBaseUrl'): string {
+export function requireEnv(name: 'zAiApiKey' | 'zAiBaseUrl'): string {
   const value = env[name];
   if (!value) {
     throw new Error(`Environment variable ${name} is required for this feature.`);
@@ -21,9 +21,14 @@ export function getRunDateOverride(): Date | null {
   if (!env.runDateOverride) {
     return null;
   }
-  const parsed = new Date(env.runDateOverride);
-  if (Number.isNaN(parsed.getTime())) {
+  const match = env.runDateOverride.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
     throw new Error(`Invalid TEST_RUN_DATE value: ${env.runDateOverride}`);
   }
-  return parsed;
+  const [, year, month, day] = match;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0));
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`Invalid TEST_RUN_DATE value: ${env.runDateOverride}`);
+  }
+  return date;
 }

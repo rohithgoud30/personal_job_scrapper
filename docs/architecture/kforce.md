@@ -4,7 +4,7 @@ This document explains the entire workflow in plain language so anyone can under
 
 ## 1. Configuration & Environment
 - `config.json` remains the single source of truth for scheduling, selectors, throttling, job-type filters, and the keyword list (`searchKeywords`). Each site entry includes its own persistent profile path so Playwright can keep cookies/login between runs.
-- `.env` (copied from `.env.example`) supplies OpenRouter/OpenAI credentials, `KEYWORD_BATCH_SIZE`, and optional `TEST_RUN_DATE=YYYY-MM-DD` if you want to backfill a specific day. Leave `TEST_RUN_DATE` empty for normal live runs.
+- `.env` (copied from `.env.example`) supplies Z.AI credentials (`ZAI_API_KEY`, optional `ZAI_BASE_URL`), `KEYWORD_BATCH_SIZE`, and optional `TEST_RUN_DATE=YYYY-MM-DD` if you want to backfill a specific day. Leave `TEST_RUN_DATE` empty for normal live runs.
 
 ## 2. Execution Modes & Parallelism
 - The default command (`npm run start:once -- --site <key>`) launches a headful persistent browser once. Keywords are processed in parallel batches (size drawn from `KEYWORD_BATCH_SIZE`), each batch using separate Playwright tabs so five keywords can run simultaneously (then the next five, etc.).
@@ -20,8 +20,8 @@ This document explains the entire workflow in plain language so anyone can under
 - `seen.json` continues to store stable job IDs per date, so `new_roles.csv` only contains brand-new rows. After a job is approved later in the pipeline, its ID is added to `seen.json` to prevent reprocessing.
 
 ## 5. Two-Stage AI Filtering
-1. **Title array filtering** – After all keywords finish, the scraper sends an array of `{ title, company, location, url, job_id }` objects to the OpenRouter model. The model returns the job IDs that should be removed. Those rows are deleted from the session file so only promising roles remain.
-2. **Full-page evaluation** – Each remaining role is opened individually. The full job description is captured and sent to the model. Only roles that receive `accepted: true` are promoted to the daily `new_jobs.csv`.
+1. **Title array filtering** – After all keywords finish, the scraper sends an array of `{ title, company, location, url, job_id }` objects to the Z.AI `glm-4.6` model. The model returns the job IDs that should be removed. Those rows are deleted from the session file so only promising roles remain.
+2. **Full-page evaluation** – Each remaining role is opened individually. The full job description is captured and sent to the `glm-4.5` model. Only roles that receive `accepted: true` are promoted to the daily `new_jobs.csv`.
 
 ## 6. Final Output
 - Approved jobs are appended (newest first) to `data/<host>/<MM_DD_YYYY>/new_jobs.csv` with columns `site,title,company,location,posted,url,job_id,scraped_at`. The day-level CSV is rewritten so new entries stay on top.

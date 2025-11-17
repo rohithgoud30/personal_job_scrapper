@@ -8,8 +8,8 @@ import { computeJobKey, loadSeenStore, saveSeenStore } from '../../lib/dedupe';
 import { buildOutputPaths, buildSessionPaths, ensureDirectoryExists, SessionPaths } from '../../lib/paths';
 import { getEasternDateLabel, getEasternTimeLabel } from '../../lib/time';
 import { env, getRunDateOverride } from '../../lib/env';
-import { evaluateJobDetail, findIrrelevantJobIds, TitleEntry } from '../../lib/aiEvaluator';
 import { sleep } from '../../lib/throttle';
+import { evaluateJobDetail, findIrrelevantJobIds, TitleEntry } from '../../lib/aiEvaluator';
 
 const FALLBACK_SELECTORS = {
   keywords: "input[placeholder='Search by Job Title or Skill']",
@@ -33,6 +33,12 @@ export async function runKforceSite(site: SiteConfig, output: OutputConfig): Pro
   const runDateOverride = getRunDateOverride();
   const runDate = runDateOverride ?? new Date();
   const isBackfill = Boolean(runDateOverride);
+  const dateLabel = getEasternDateLabel(runDate);
+  if (isBackfill) {
+    console.log(`[kforce] Backfill mode enabled. Using run date ${dateLabel}.`);
+  } else {
+    console.log(`[kforce] Live run using current date ${dateLabel}.`);
+  }
   const outputPaths = buildOutputPaths(output, site, runDate);
   const sessionId = createSessionId();
   const sessionPaths = buildSessionPaths(outputPaths, sessionId);
@@ -55,10 +61,12 @@ export async function runKforceSite(site: SiteConfig, output: OutputConfig): Pro
       return;
     }
 
-    await writeSessionRoles(sessionPaths, Array.from(staged.values()));
+    const stagedArray = Array.from(staged.values());
+    console.log(`[kforce][AI] Running title filter on ${stagedArray.length} staged roles...`);
+    await writeSessionRoles(sessionPaths, stagedArray);
 
-    const removalSet = await filterTitlesWithAi(Array.from(staged.values()));
-    const filtered = Array.from(staged.values()).filter((row) => !removalSet.has(row.job_id ?? row.url));
+    const removalSet = await filterTitlesWithAi(stagedArray);
+    const filtered = stagedArray.filter((row) => !removalSet.has(row.job_id ?? row.url));
     if (!filtered.length) {
       console.log('[kforce] AI filtered out all titles for this session.');
       await writeSessionRoles(sessionPaths, filtered);
@@ -66,6 +74,9 @@ export async function runKforceSite(site: SiteConfig, output: OutputConfig): Pro
     }
 
     await writeSessionRoles(sessionPaths, filtered);
+    console.log(
+      `[kforce][AI] Title filter removed ${stagedArray.length - filtered.length} roles. ${filtered.length} remain for detail evaluation.`
+    );
 
     const acceptedRows = await evaluateDetailedJobs(context, filtered, seen);
     if (!acceptedRows.length) {
@@ -246,21 +257,54 @@ async function collectListingRows(
       break;
     }
 
-    await nextButton.click();
-    await page
-      .waitForFunction(
-        ({ selector, previousCount }) => document.querySelectorAll(selector).length > previousCount,
-        { selector: cardSelector, previousCount: processedCount },
-        { timeout: 60000 }
-      )
-      .catch(() => {
-        console.warn('[kforce] Load more button did not increase job count within timeout.');
-      });
+    const loaded = await loadMoreWithRetry(page, nextSelector, cardSelector, processedCount, keyword);
+    if (!loaded) {
+      break;
+    }
 
     pageIndex += 1;
   }
 
   return rows;
+}
+
+async function loadMoreWithRetry(
+  page: Page,
+  nextSelector: string,
+  cardSelector: string,
+  previousCount: number,
+  keyword: string
+): Promise<boolean> {
+  const loadMoreButton = page.locator(nextSelector).first();
+  if (!(await loadMoreButton.isVisible().catch(() => false))) {
+    return false;
+  }
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      await loadMoreButton.click();
+      await page.waitForFunction(
+        ({ selector, previousCount: prev }) => document.querySelectorAll(selector).length > prev,
+        { selector: cardSelector, previousCount },
+        { timeout: 60000 }
+      );
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempt === 1) {
+        console.warn(
+          `[kforce] Load more failed for keyword "${keyword}". Sleeping 30s and retrying once. Reason: ${message}`
+        );
+        await sleep(30);
+      } else {
+        console.error(
+          `[kforce] Load more failed again for keyword "${keyword}". Aborting pagination. Reason: ${message}`
+        );
+        return false;
+      }
+    }
+  }
+  return false;
 }
 
 async function evaluateDetailedJobs(
@@ -269,12 +313,24 @@ async function evaluateDetailedJobs(
   seen: Set<string>
 ): Promise<JobRow[]> {
   const accepted: JobRow[] = [];
-  for (const role of roles) {
+  for (let i = 0; i < roles.length; i++) {
+    const role = roles[i];
     const page = await context.newPage();
     try {
       await page.goto(role.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      const description = await extractDescription(page);
-      const acceptedByAi = await evaluateJobDetail({
+      let description = await extractDescription(page);
+      if (description.length < 500) {
+        await page.waitForTimeout(10000);
+        description = await extractDescription(page);
+      }
+      if (description.length < 500) {
+        await page.waitForTimeout(30000);
+        description = await extractDescription(page);
+      }
+      console.log(
+        `[kforce][AI] Detail candidate #${i + 1}/${roles.length} "${role.title}" (${role.location}) – description length ${description.length} chars.`
+      );
+      const detailResult = await evaluateJobDetail({
         title: role.title,
         company: role.company,
         location: role.location,
@@ -282,7 +338,12 @@ async function evaluateDetailedJobs(
         description
       });
 
-      if (!acceptedByAi) {
+      if (!detailResult.accepted) {
+        console.log(
+          `[kforce][AI] Rejected "${role.title}" (${role.location}) – Reason: ${
+            detailResult.reasoning || 'Model marked as not relevant.'
+          }`
+        );
         continue;
       }
 
@@ -300,11 +361,19 @@ async function evaluateDetailedJobs(
     }
   }
 
+  console.log(`[kforce][AI] Detail evaluation accepted ${accepted.length} roles out of ${roles.length}.`);
   return accepted;
 }
 
-async function extractDescription(page: Page): Promise<string> {
-  const selectors = ['main', '.job-detail', '.jobDescription', 'body'];
+export async function extractDescription(page: Page): Promise<string> {
+  const detailSelectors = ['.job-detail', '.jobDescription', '.job-details', '.RichTextEditorClass'];
+  try {
+    await page.waitForSelector(detailSelectors.join(', '), { timeout: 3000 });
+  } catch {
+    // ignore; will fallback to general selectors
+  }
+
+  const selectors = ['.job-detail', '.jobDescription', '.job-details', '.RichTextEditorClass', 'main', 'body'];
   for (const selector of selectors) {
     const locator = page.locator(selector).first();
     if (await locator.count()) {
