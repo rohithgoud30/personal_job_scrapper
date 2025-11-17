@@ -41,10 +41,10 @@ export async function findIrrelevantJobIds(entries: TitleEntry[]): Promise<Set<s
 
   const client = getClient();
   const systemPrompt = [
-    'You receive an array of job listings for a senior full-stack engineer (Java, Spring Boot, Python, FastAPI, Node.js, React, React Native, Next.js, TypeScript, cloud).',
-    'Return JSON { "removeJobIds": [ ...job_id... ] } listing the postings that are irrelevant.',
+    'You receive an array of job listings that should fit a modern software engineer who can work across frontend (React, Angular, Next.js, TypeScript), backend (Java/Spring Boot, Python/FastAPI, Node.js/Express), and mobile (React Native) stacks, plus cloud microservices.',
+    'Return JSON { "removeJobIds": [ ...job_id... ] } listing any postings that are clearly NOT related to those kinds of roles.',
     'Only use the provided title/company/location/url fields.',
-    'If everything is relevant, return an empty array.'
+    'If every listing is relevant, return an empty array.'
   ].join(' ');
 
   const userContent = JSON.stringify(entries, null, 2);
@@ -65,8 +65,8 @@ export async function findIrrelevantJobIds(entries: TitleEntry[]): Promise<Set<s
 export async function evaluateJobDetail(payload: DetailPayload): Promise<boolean> {
   const client = getClient();
   const systemPrompt = [
-    'You evaluate full job descriptions for a senior full-stack engineer (Java, Spring Boot, Python, FastAPI, Node.js, React, React Native, Next.js, TypeScript, cloud).',
-    'Return JSON { "accepted": boolean } where accepted is true only if the detailed description is a strong match.'
+    'You read a full job description and decide if it matches a senior engineer who can work across frontend (React, Angular, Next.js, TypeScript), backend (Java/Spring Boot, Python/FastAPI, Node.js/Express), mobile (React Native), and cloud microservices.',
+    'Return JSON { "accepted": boolean } where accepted is true only if these skills are clearly required.'
   ].join(' ');
 
   const userContent = `Title: ${payload.title}\nCompany: ${payload.company}\nLocation: ${payload.location}\nURL: ${payload.url}\nDescription:\n${payload.description}`;

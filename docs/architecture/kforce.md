@@ -4,7 +4,7 @@ This document explains the entire workflow in plain language so anyone can under
 
 ## 1. Configuration & Environment
 - `config.json` remains the single source of truth for scheduling, selectors, throttling, job-type filters, and the keyword list (`searchKeywords`). Each site entry includes its own persistent profile path so Playwright can keep cookies/login between runs.
-- `.env` (copied from `.env.example`) supplies OpenRouter/OpenAI credentials and `KEYWORD_BATCH_SIZE`. No other secrets are needed.
+- `.env` (copied from `.env.example`) supplies OpenRouter/OpenAI credentials, `KEYWORD_BATCH_SIZE`, and optional `TEST_RUN_DATE=YYYY-MM-DD` if you want to backfill a specific day. Leave `TEST_RUN_DATE` empty for normal live runs.
 
 ## 2. Execution Modes & Parallelism
 - The default command (`npm run start:once -- --site <key>`) launches a headful persistent browser once. Keywords are processed in parallel batches (size drawn from `KEYWORD_BATCH_SIZE`), each batch using separate Playwright tabs so five keywords can run simultaneously (then the next five, etc.).

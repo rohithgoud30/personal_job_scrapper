@@ -7,8 +7,9 @@ import { appendJobRows, JobRow } from '../../lib/csv';
 import { computeJobKey, loadSeenStore, saveSeenStore } from '../../lib/dedupe';
 import { buildOutputPaths, buildSessionPaths, ensureDirectoryExists, SessionPaths } from '../../lib/paths';
 import { getEasternDateLabel, getEasternTimeLabel } from '../../lib/time';
-import { env } from '../../lib/env';
+import { env, getRunDateOverride } from '../../lib/env';
 import { evaluateJobDetail, findIrrelevantJobIds, TitleEntry } from '../../lib/aiEvaluator';
+import { sleep } from '../../lib/throttle';
 
 const FALLBACK_SELECTORS = {
   keywords: "input[placeholder='Search by Job Title or Skill']",
@@ -29,7 +30,10 @@ export async function runKforceSite(site: SiteConfig, output: OutputConfig): Pro
     return;
   }
 
-  const outputPaths = buildOutputPaths(output, site);
+  const runDateOverride = getRunDateOverride();
+  const runDate = runDateOverride ?? new Date();
+  const isBackfill = Boolean(runDateOverride);
+  const outputPaths = buildOutputPaths(output, site, runDate);
   const sessionId = createSessionId();
   const sessionPaths = buildSessionPaths(outputPaths, sessionId);
   await ensureDirectoryExists(sessionPaths.rolesDir);
@@ -44,7 +48,7 @@ export async function runKforceSite(site: SiteConfig, output: OutputConfig): Pro
   });
 
   try {
-    await scrapeKeywordsInBatches(context, site, keywords, seen, staged, sessionId);
+    await scrapeKeywordsInBatches(context, site, keywords, seen, staged, sessionId, runDate, isBackfill);
 
     if (!staged.size) {
       console.log('[kforce] No new roles detected for this session.');
@@ -83,14 +87,24 @@ async function scrapeKeywordsInBatches(
   keywords: string[],
   seen: Set<string>,
   staged: Map<string, SessionRole>,
-  sessionId: string
+  sessionId: string,
+  runDate: Date,
+  isBackfill: boolean
 ): Promise<void> {
   const batchSize = env.keywordBatchSize;
   for (let i = 0; i < keywords.length; i += batchSize) {
     const batch = keywords.slice(i, i + batchSize);
     await Promise.all(
-      batch.map((keyword) => scrapeKeywordInNewPage(context, site, keyword, seen, staged, sessionId))
+      batch.map((keyword) =>
+        scrapeKeywordInNewPage(context, site, keyword, seen, staged, sessionId, runDate, isBackfill)
+      )
     );
+
+    const hasMoreBatches = i + batchSize < keywords.length;
+    if (!isBackfill && hasMoreBatches) {
+      console.log('[kforce] Sleeping 30s before next keyword batch (robots crawl-delay).');
+      await sleep(30);
+    }
   }
 }
 
@@ -100,13 +114,15 @@ async function scrapeKeywordInNewPage(
   keyword: string,
   seen: Set<string>,
   staged: Map<string, SessionRole>,
-  sessionId: string
+  sessionId: string,
+  runDate: Date,
+  isBackfill: boolean
 ): Promise<void> {
   const page = await context.newPage();
   try {
     console.log(`[kforce] Searching for keyword "${keyword}"`);
     await prepareSearchPage(page, site);
-    const rows = await scrapeKeyword(page, site, keyword);
+    const rows = await scrapeKeyword(page, site, keyword, runDate, isBackfill);
     let added = 0;
     for (const row of rows) {
       const jobKey = computeJobKey(row);
@@ -135,7 +151,13 @@ async function prepareSearchPage(page: Page, site: SiteConfig): Promise<void> {
   await ensureNewestSort(page, site.search.selectors);
 }
 
-async function scrapeKeyword(page: Page, site: SiteConfig, keyword: string): Promise<JobRow[]> {
+async function scrapeKeyword(
+  page: Page,
+  site: SiteConfig,
+  keyword: string,
+  runDate: Date,
+  isBackfill: boolean
+): Promise<JobRow[]> {
   const selectors = site.search.selectors;
   const keywordSelector = selectors.keywords ?? FALLBACK_SELECTORS.keywords;
   const keywordInput = page.locator(keywordSelector).first();
@@ -170,10 +192,16 @@ async function scrapeKeyword(page: Page, site: SiteConfig, keyword: string): Pro
   );
 
   await ensureNewestSort(page, selectors);
-  return collectListingRows(page, site, keyword);
+  return collectListingRows(page, site, keyword, runDate, isBackfill);
 }
 
-async function collectListingRows(page: Page, site: SiteConfig, keyword: string): Promise<JobRow[]> {
+async function collectListingRows(
+  page: Page,
+  site: SiteConfig,
+  keyword: string,
+  runDate: Date,
+  isBackfill: boolean
+): Promise<JobRow[]> {
   const selectors = site.search.selectors;
   const cardSelector = selectors.card ?? FALLBACK_SELECTORS.card;
   const cards = page.locator(cardSelector);
@@ -191,7 +219,7 @@ async function collectListingRows(page: Page, site: SiteConfig, keyword: string)
         continue;
       }
 
-      if (site.search.postedTodayOnly && !isPostedToday(row.posted)) {
+      if (site.search.postedTodayOnly && !isPostedToday(row.posted, runDate)) {
         continue;
       }
 
@@ -199,7 +227,7 @@ async function collectListingRows(page: Page, site: SiteConfig, keyword: string)
       rows.push(row);
     }
 
-    if (site.search.postedTodayOnly && !pageHasToday) {
+    if (!isBackfill && site.search.postedTodayOnly && !pageHasToday) {
       console.log(
         `[kforce] No results dated today on page ${pageIndex}. Skipping pagination for keyword "${keyword}".`
       );
@@ -481,13 +509,13 @@ function normalizeKeywords(raw: string | string[]): string[] {
   return Array.from(new Set(candidates.map((keyword) => keyword.trim()).filter(Boolean)));
 }
 
-function isPostedToday(posted: string): boolean {
+function isPostedToday(posted: string, referenceDate: Date): boolean {
   const normalized = normalizeDate(posted);
   if (!normalized) {
     return false;
   }
 
-  const today = getEasternDateLabel();
+  const today = getEasternDateLabel(referenceDate);
   return normalized === today;
 }
 

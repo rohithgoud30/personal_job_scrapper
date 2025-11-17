@@ -4,7 +4,7 @@ Headful Playwright automation that you can run on-demand to capture contract lis
 
 ## Getting Started
 1. Install dependencies and browser: `npm install && npx playwright install chromium`.
-2. Copy `.env.example` to `.env`, set `OPENROUTER_API_KEY` (OpenRouter/OpenAI-compatible key) and optionally tweak `KEYWORD_BATCH_SIZE` for how many keywords run in parallel.
+2. Copy `.env.example` to `.env`, set `OPENROUTER_API_KEY` (OpenRouter/OpenAI-compatible key). Optional knobs: `KEYWORD_BATCH_SIZE` (parallel keyword tabs) and `TEST_RUN_DATE=YYYY-MM-DD` if you want to backfill a previous day for testing.
 3. Customize `config.json` (selectors, keyword list, throttle timings). All secrets live directly in this file.
 4. Run once (default): `npm run start:once -- --site kforce`. The run stages roles per session, sends the combined titles to AI for pruning, then visits each approved job for a full-text AI check before writing to the daily CSV. Make sure no other Chromium window is using the site’s persistent profile (e.g., `.playwright/kforce`) before launching.
 5. Optional scheduling later: `npm run start -- --site <key> --schedule` (honors `schedule.cron` only when you add `--schedule`; manual runs remain the default). When you add more sites, pass comma-separated keys (e.g., `--site kforce,newPortal`).
