@@ -2,44 +2,39 @@
 
 This document explains the entire workflow in plain language so anyone can understand how the scraper operates without diving into the code. When you add new sites, follow the same building blocks: config-only selectors, headful Playwright automation, polite crawling, and per-day CSV output.
 
-## 1. Configuration-Driven Workflow
-- `config.json` is the single source of truth. It stores everything: cron schedule, output paths, keyword lists, selectors, throttling rules, disallow patterns, cookie-consent buttons, job-type filters, etc.
-- Each site entry includes a unique `key`, `host`, persistent profile path, search selectors, and pacing instructions. To add a new site, copy the block, adjust selectors/keywords, and create a corresponding runner file if the flow differs (Kforce uses `src/sites/kforce/index.ts`).
-- No `.env` files or hidden secrets—everything lives in config for transparency and auditability.
+## 1. Configuration & Environment
+- `config.json` remains the single source of truth for scheduling, selectors, throttling, job-type filters, and the keyword list (`searchKeywords`). Each site entry includes its own persistent profile path so Playwright can keep cookies/login between runs.
+- `.env` (copied from `.env.example`) supplies OpenRouter/OpenAI credentials and `KEYWORD_BATCH_SIZE`. No other secrets are needed.
 
-## 2. Execution Modes
-- Default run (`npm run start:once -- --site <key>`) executes headfully once, using the persistent profile in `.playwright/<key>`. You get a visible Chromium window to watch the scraper operate, see cookie banners, and spot DOM changes quickly.
-- Optional scheduling (`--schedule`) wraps `node-cron`: the same code path fires at the configured minute/hour. Because cron is opt-in, there’s no risk of background jobs until you explicitly enable them.
-- The CLI accepts comma-separated `--site` values, so in the future you can run multiple portals sequentially without changing any code.
+## 2. Execution Modes & Parallelism
+- The default command (`npm run start:once -- --site <key>`) launches a headful persistent browser once. Keywords are processed in parallel batches (size drawn from `KEYWORD_BATCH_SIZE`), each batch using separate Playwright tabs so five keywords can run simultaneously (then the next five, etc.).
+- Optional scheduling (`--schedule`) still uses `node-cron`, but only when you explicitly pass the flag. Multiple sites can be specified via comma-separated `--site` values.
 
 ## 3. Browser Session & Compliance
-- Playwright launches via `launchPersistentContext` to keep cookies and login state between runs. If a window is already open with that profile, the run stops to avoid corrupting the profile (close older windows before relaunching).
-- Cookie consent is handled immediately using config-driven selectors (e.g., OneTrust “Accept” button). This ensures behavior matches real users and prevents pop-ups from blocking the main flow.
-- Robots considerations: the scraper never clicks disallowed URLs (matching `disallowPatterns`), throttles actions/pagination per config, and respects the intent behind crawl delays even if they’re advisory.
+- Playwright uses `launchPersistentContext` against `.playwright/<key>`. Close any older windows using that profile before starting a new run; the browser enforces a singleton lock to prevent corruption.
+- Cookie consent (OneTrust) is automatically accepted every time a new tab opens. Contract filters and “Newest Jobs First” sorting are re-applied on each tab as well.
+- Robots guidelines are honored by skipping disallowed URLs, throttling pagination, and limiting page depth. The script still abandons pagination when page 1 contains no “posted today” listings.
 
-## 4. Search & Filtering Logic
-- Every interaction uses selectors from config: keyword field, location input, search button, job cards, title, posting date, job type, pagination, sort dropdown, etc. If the site’s DOM changes, edit config—no code rebuild needed.
-- Before searching, the runner applies site-specific filters that align with your goals. For Kforce, we enable the “Contract” facet and only keep cards whose job-type text confirms “Contract”.
-- The script enforces “posted today” using US Eastern time. If page 1 of results doesn’t contain any current-day jobs, pagination stops immediately and the scraper moves on to the next keyword. This minimizes traffic and honors the “today only” requirement.
+## 4. Staging, Sessions, and Dedupe
+- Every run receives a `session-<timestamp>` folder under `data/<host>/<date>/sessions/<sessionId>`. Raw results (after deduping against `seen.json`) land in `roles/new_roles.csv` with columns `session_id, keyword, ... job details`.
+- `seen.json` continues to store stable job IDs per date, so `new_roles.csv` only contains brand-new rows. After a job is approved later in the pipeline, its ID is added to `seen.json` to prevent reprocessing.
 
-## 5. Sorting & Data Ordering
-- After results load, the runner confirms the dropdown reads “Newest Jobs First”. If not, it opens the dropdown and selects that option, then waits for the refreshed list. This ensures every keyword sees the same newest-first view without manual intervention.
-- The scraper buffers new rows per keyword and prepends them to the day’s CSV, so you always see the latest discoveries at the top. Every row includes `scraped_at` (12-hour ET) for auditing.
+## 5. Two-Stage AI Filtering
+1. **Title array filtering** – After all keywords finish, the scraper sends an array of `{ title, company, location, url, job_id }` objects to the OpenRouter model. The model returns the job IDs that should be removed. Those rows are deleted from the session file so only promising roles remain.
+2. **Full-page evaluation** – Each remaining role is opened individually. The full job description is captured and sent to the model. Only roles that receive `accepted: true` are promoted to the daily `new_jobs.csv`.
 
-## 6. Storage & Dedupe
-- Output path pattern: `data/<host>/<MM_DD_YYYY>/new_jobs.csv` plus a `seen.json` in the same folder. Each day gets exactly one CSV per site, making it simple to archive or share.
-- `seen.json` stores stable identifiers (prefer actual job IDs, fallback to title/company/location/url hash). Before writing, rows are filtered against `seen.json` so duplicates never re-enter the CSV in the same day.
-- CSV columns are fixed (`site,title,company,location,posted,url,job_id,scraped_at`) to keep files compact and consistent across sites.
+## 6. Final Output
+- Approved jobs are appended (newest first) to `data/<host>/<MM_DD_YYYY>/new_jobs.csv` with columns `site,title,company,location,posted,url,job_id,scraped_at`. The day-level CSV is rewritten so new entries stay on top.
+- Each run prints how many roles were accepted and where they were written.
 
 ## 7. Observability & Recovery
-- Real-time logging tracks each keyword (`scraped X, new Y`), pagination decisions, and skip reasons (“no today postings”). When adding new portals, reuse the same logging semantics so you can compare sites easily.
-- A live elapsed timer shows progress like npm installs. Once the run ends, the CLI prints a summary with total runtime and number of sites processed.
-- Headful mode leaves the browser visible if an error occurs, allowing you to inspect selectors, login prompts, or network issues on the spot. Persistent profiles mean you usually log in once; if a session expires, the next run pauses with the login form for manual action.
+- Console logs cover keyword batches, parallel tab activity, AI removals, and detail evaluations. When another site is added, reuse the same logging style so output stays consistent.
+- A live `[runner] Elapsed` timer stays pinned to the terminal while the run executes, and a completion summary prints the total duration once everything finishes.
+- Headful tabs remain visible during scraping and evaluation, so if a DOM change or login prompt occurs you can intervene immediately.
 
-## 8. Future Expansion
-- To onboard another job board, duplicate the Kforce config block, pick new selectors/keywords, and add a corresponding runner if the workflow deviates. Shared utilities in `src/lib` (config loader, CSV helper, dedupe store, throttle, cookie handler, time formatting) already support multiple sites without change.
-- You can run new sites individually (`--site newSite`) or alongside existing ones (`--site kforce,newSite`). Each site will write into its own `data/<host>/...` tree.
-- Because the entire setup is config-driven, scaling to multiple portals is mostly about creating reliable selectors and respecting each site’s robots guidance—no need to recompile or redeploy code for every tweak.
+## 8. Extending to New Sites
+- Duplicate the Kforce block in `config.json`, adjust selectors/filters/keywords, and add a new `src/sites/<site>/index.ts` runner if the site needs custom interactions. Otherwise, the shared libs (config loader, AI wrapper, session writer, etc.) already handle multi-site execution.
+- Each site writes into its own `data/<host>/...` tree and uses a dedicated persistent profile (`.playwright/<site>`), so there’s no cross-talk between portals.
 
 ## 8. Extensibility Considerations
 - To add more sites, duplicate the config block and create a sibling runner module; the shared libraries (paths, CSV, dedupe, throttle, cookies) already support multiple sites.

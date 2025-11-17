@@ -1,12 +1,14 @@
+import fs from 'fs';
 import path from 'path';
 import { BrowserContext, Locator, Page, chromium } from 'playwright';
-import { OutputConfig, SearchSelectors, SiteConfig } from '../../lib/config';
+import { OutputConfig, SiteConfig } from '../../lib/config';
 import { acceptCookieConsent } from '../../lib/cookies';
 import { appendJobRows, JobRow } from '../../lib/csv';
-import { filterNewRows, loadSeenStore, saveSeenStore } from '../../lib/dedupe';
-import { buildOutputPaths } from '../../lib/paths';
-import { sleep } from '../../lib/throttle';
+import { computeJobKey, loadSeenStore, saveSeenStore } from '../../lib/dedupe';
+import { buildOutputPaths, buildSessionPaths, ensureDirectoryExists, SessionPaths } from '../../lib/paths';
 import { getEasternDateLabel, getEasternTimeLabel } from '../../lib/time';
+import { env } from '../../lib/env';
+import { evaluateJobDetail, findIrrelevantJobIds, TitleEntry } from '../../lib/aiEvaluator';
 
 const FALLBACK_SELECTORS = {
   keywords: "input[placeholder='Search by Job Title or Skill']",
@@ -14,6 +16,11 @@ const FALLBACK_SELECTORS = {
   submit: '.submitIcon',
   next: '.data-job-pagination .btn-line-darkCerulean'
 };
+
+interface SessionRole extends JobRow {
+  session_id: string;
+  keyword: string;
+}
 
 export async function runKforceSite(site: SiteConfig, output: OutputConfig): Promise<void> {
   const keywords = normalizeKeywords(site.search.criteria.searchKeywords);
@@ -23,77 +30,109 @@ export async function runKforceSite(site: SiteConfig, output: OutputConfig): Pro
   }
 
   const outputPaths = buildOutputPaths(output, site);
+  const sessionId = createSessionId();
+  const sessionPaths = buildSessionPaths(outputPaths, sessionId);
+  await ensureDirectoryExists(sessionPaths.rolesDir);
+
   const seen = await loadSeenStore(outputPaths.seenFile);
+  const staged = new Map<string, SessionRole>();
 
-  let context: BrowserContext | null = null;
+  const userDataDir = path.resolve(site.userDataDir);
+  const context = await chromium.launchPersistentContext(userDataDir, {
+    headless: false,
+    viewport: { width: 1280, height: 800 }
+  });
+
   try {
-    const userDataDir = path.resolve(site.userDataDir);
-    context = await chromium.launchPersistentContext(userDataDir, {
-      headless: false,
-      viewport: { width: 1280, height: 800 }
-    });
+    await scrapeKeywordsInBatches(context, site, keywords, seen, staged, sessionId);
 
-    const page = context.pages()[0] ?? (await context.newPage());
-    await page.bringToFront();
-
-    console.log(`[kforce] Navigating to ${site.search.url}`);
-    await page.goto(site.search.url, { waitUntil: 'domcontentloaded' });
-    await acceptCookieConsent(page, site.cookieConsent);
-    await ensureJobTypeFacet(page, site);
-    await ensureInitialSort(page, site.search.selectors);
-
-    const keywordSelector = site.search.selectors.keywords ?? FALLBACK_SELECTORS.keywords;
-    await page.waitForSelector(keywordSelector, { timeout: 45000 });
-
-    let totalScraped = 0;
-    let totalNew = 0;
-    const pendingRows: JobRow[] = [];
-
-    for (const keyword of keywords) {
-      console.log(`[kforce] Searching for keyword "${keyword}"`);
-      let rows: JobRow[] = [];
-      try {
-        rows = await scrapeKeyword(page, site, keyword);
-        totalScraped += rows.length;
-        const newRows = filterNewRows(rows, seen);
-
-        if (newRows.length) {
-          await saveSeenStore(outputPaths.seenFile, seen);
-          totalNew += newRows.length;
-          for (const row of newRows) {
-            pendingRows.unshift(row);
-          }
-        }
-
-        console.log(
-          `[kforce] Keyword "${keyword}": scraped ${rows.length}, new ${newRows.length}, cumulative new ${totalNew}`
-        );
-      } catch (error) {
-        console.error(`[kforce] Failed to scrape keyword "${keyword}"`, error);
-      }
-
-      if (
-        site.run.keywordDelaySeconds &&
-        site.run.keywordDelaySeconds > 0 &&
-        rows.length > 0
-      ) {
-        console.log(`[kforce] Waiting ${site.run.keywordDelaySeconds}s before next keyword...`);
-        await sleep(site.run.keywordDelaySeconds);
-      }
+    if (!staged.size) {
+      console.log('[kforce] No new roles detected for this session.');
+      return;
     }
 
-    if (pendingRows.length) {
-      await appendJobRows(outputPaths.csvFile, pendingRows);
+    await writeSessionRoles(sessionPaths, Array.from(staged.values()));
+
+    const removalSet = await filterTitlesWithAi(Array.from(staged.values()));
+    const filtered = Array.from(staged.values()).filter((row) => !removalSet.has(row.job_id ?? row.url));
+    if (!filtered.length) {
+      console.log('[kforce] AI filtered out all titles for this session.');
+      await writeSessionRoles(sessionPaths, filtered);
+      return;
     }
 
-    console.log(
-      `[kforce] Completed run. Total scraped: ${totalScraped}, total new: ${totalNew}. Output: ${outputPaths.csvFile}`
-    );
+    await writeSessionRoles(sessionPaths, filtered);
+
+    const acceptedRows = await evaluateDetailedJobs(context, filtered, seen);
+    if (!acceptedRows.length) {
+      console.log('[kforce] No jobs approved after detail evaluation.');
+      return;
+    }
+
+    await appendJobRows(outputPaths.csvFile, acceptedRows);
+    await saveSeenStore(outputPaths.seenFile, seen);
+    console.log(`[kforce] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`);
   } finally {
-    if (context) {
-      await context.close();
-    }
+    await context.close();
   }
+}
+
+async function scrapeKeywordsInBatches(
+  context: BrowserContext,
+  site: SiteConfig,
+  keywords: string[],
+  seen: Set<string>,
+  staged: Map<string, SessionRole>,
+  sessionId: string
+): Promise<void> {
+  const batchSize = env.keywordBatchSize;
+  for (let i = 0; i < keywords.length; i += batchSize) {
+    const batch = keywords.slice(i, i + batchSize);
+    await Promise.all(
+      batch.map((keyword) => scrapeKeywordInNewPage(context, site, keyword, seen, staged, sessionId))
+    );
+  }
+}
+
+async function scrapeKeywordInNewPage(
+  context: BrowserContext,
+  site: SiteConfig,
+  keyword: string,
+  seen: Set<string>,
+  staged: Map<string, SessionRole>,
+  sessionId: string
+): Promise<void> {
+  const page = await context.newPage();
+  try {
+    console.log(`[kforce] Searching for keyword "${keyword}"`);
+    await prepareSearchPage(page, site);
+    const rows = await scrapeKeyword(page, site, keyword);
+    let added = 0;
+    for (const row of rows) {
+      const jobKey = computeJobKey(row);
+      if (seen.has(jobKey) || staged.has(jobKey)) {
+        continue;
+      }
+      staged.set(jobKey, {
+        ...row,
+        session_id: sessionId,
+        keyword
+      });
+      added += 1;
+    }
+    console.log(`[kforce] Keyword "${keyword}": scraped ${rows.length}, staged ${added}`);
+  } catch (error) {
+    console.error(`[kforce] Failed keyword "${keyword}"`, error);
+  } finally {
+    await page.close();
+  }
+}
+
+async function prepareSearchPage(page: Page, site: SiteConfig): Promise<void> {
+  await page.goto(site.search.url, { waitUntil: 'domcontentloaded' });
+  await acceptCookieConsent(page, site.cookieConsent);
+  await ensureJobTypeFacet(page, site);
+  await ensureNewestSort(page, site.search.selectors);
 }
 
 async function scrapeKeyword(page: Page, site: SiteConfig, keyword: string): Promise<JobRow[]> {
@@ -106,7 +145,7 @@ async function scrapeKeyword(page: Page, site: SiteConfig, keyword: string): Pro
   }
 
   await keywordInput.fill('');
-  await keywordInput.type(keyword, { delay: 35 });
+  await keywordInput.type(keyword, { delay: 20 });
 
   if (selectors.location && site.search.criteria.location) {
     await fillLocation(page, selectors.location, site.search.criteria.location);
@@ -123,10 +162,6 @@ async function scrapeKeyword(page: Page, site: SiteConfig, keyword: string): Pro
     submitButton.click({ delay: 50 })
   ]);
 
-  if (site.run.throttleSeconds > 0) {
-    await sleep(site.run.throttleSeconds);
-  }
-
   const cardSelector = selectors.card ?? FALLBACK_SELECTORS.card;
   await page.waitForFunction(
     ({ selector }) => document.querySelectorAll(selector).length > 0,
@@ -134,11 +169,7 @@ async function scrapeKeyword(page: Page, site: SiteConfig, keyword: string): Pro
     { timeout: 60000 }
   );
 
-  const sortApplied = await ensureNewestSort(page, selectors);
-  if (sortApplied) {
-    await page.waitForLoadState('networkidle').catch(() => undefined);
-  }
-
+  await ensureNewestSort(page, selectors);
   return collectListingRows(page, site, keyword);
 }
 
@@ -187,9 +218,7 @@ async function collectListingRows(page: Page, site: SiteConfig, keyword: string)
       break;
     }
 
-    console.log(`[kforce] Loading additional results (page ${pageIndex + 1}) for keyword "${keyword}"`);
     await nextButton.click();
-
     await page
       .waitForFunction(
         ({ selector, previousCount }) => document.querySelectorAll(selector).length > previousCount,
@@ -201,57 +230,196 @@ async function collectListingRows(page: Page, site: SiteConfig, keyword: string)
       });
 
     pageIndex += 1;
-    if (site.run.pageDelaySeconds > 0) {
-      await sleep(site.run.pageDelaySeconds);
-    }
   }
 
   return rows;
 }
 
-async function extractJobRow(card: Locator, site: SiteConfig): Promise<JobRow | null> {
-  const selectors = site.search.selectors;
-  const titleSelector = selectors.title ?? 'h2 a';
-  const titleLink = card.locator(titleSelector).first();
+async function evaluateDetailedJobs(
+  context: BrowserContext,
+  roles: SessionRole[],
+  seen: Set<string>
+): Promise<JobRow[]> {
+  const accepted: JobRow[] = [];
+  for (const role of roles) {
+    const page = await context.newPage();
+    try {
+      await page.goto(role.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      const description = await extractDescription(page);
+      const acceptedByAi = await evaluateJobDetail({
+        title: role.title,
+        company: role.company,
+        location: role.location,
+        url: role.url,
+        description
+      });
 
-  if ((await titleLink.count()) === 0) {
-    return null;
-  }
+      if (!acceptedByAi) {
+        continue;
+      }
 
-  const rawTitle = (await titleLink.innerText()).trim();
-  const href = (await titleLink.getAttribute('href')) ?? '';
-  const url = new URL(href, site.search.url).toString();
-  if (site.disallowPatterns.some((pattern) => url.includes(pattern))) {
-    console.log(`[kforce] Skipping disallowed URL ${url}`);
-    return null;
-  }
+      const jobKey = computeJobKey(role);
+      if (seen.has(jobKey)) {
+        continue;
+      }
 
-  const locationText = selectors.locationText
-    ? (await card.locator(selectors.locationText).first().innerText().catch(() => '')).trim()
-    : '';
-  const jobTypeText = selectors.jobType
-    ? (await card.locator(selectors.jobType).first().innerText().catch(() => '')).trim()
-    : '';
-
-  if (site.search.jobTypeFilter?.length) {
-    if (!jobTypeMatches(jobTypeText, site.search.jobTypeFilter)) {
-      return null;
+      seen.add(jobKey);
+      accepted.push(role);
+    } catch (error) {
+      console.error(`[kforce] Failed to evaluate detail for ${role.url}`, error);
+    } finally {
+      await page.close();
     }
   }
-  const postedText = selectors.posted
-    ? (await card.locator(selectors.posted).first().innerText().catch(() => '')).trim()
-    : '';
 
-  return {
-    site: site.key,
-    title: rawTitle,
-    company: 'Kforce',
-    location: locationText,
-    posted: postedText,
-    url,
-    job_id: extractJobId(href) ?? undefined,
-    scraped_at: getEasternTimeLabel()
-  };
+  return accepted;
+}
+
+async function extractDescription(page: Page): Promise<string> {
+  const selectors = ['main', '.job-detail', '.jobDescription', 'body'];
+  for (const selector of selectors) {
+    const locator = page.locator(selector).first();
+    if (await locator.count()) {
+      try {
+        const text = await locator.innerText({ timeout: 5000 });
+        if (text.trim()) {
+          return text.trim();
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+  }
+  return await page.content();
+}
+
+async function filterTitlesWithAi(rows: SessionRole[]): Promise<Set<string>> {
+  const entries: TitleEntry[] = rows.map((row) => ({
+    title: row.title,
+    company: row.company,
+    location: row.location,
+    url: row.url,
+    job_id: row.job_id ?? row.url
+  }));
+  return findIrrelevantJobIds(entries);
+}
+
+async function writeSessionRoles(sessionPaths: SessionPaths, rows: SessionRole[]): Promise<void> {
+  const headers = ['session_id', 'keyword', 'site', 'title', 'company', 'location', 'posted', 'url', 'job_id', 'scraped_at'];
+  const lines = rows.map((row) => [
+    row.session_id,
+    row.keyword,
+    row.site,
+    escapeCsv(row.title),
+    escapeCsv(row.company),
+    escapeCsv(row.location),
+    escapeCsv(row.posted),
+    row.url,
+    row.job_id ?? '',
+    row.scraped_at
+  ].join(','));
+
+  const payload = [headers.join(','), ...lines].join('\n') + '\n';
+  await ensureDirectoryExists(sessionPaths.rolesDir);
+  await fs.promises.writeFile(sessionPaths.rolesFile, payload, 'utf-8');
+}
+
+function escapeCsv(value: string): string {
+  if (!value) {
+    return '';
+  }
+  if (!value.includes(',')) {
+    return value;
+  }
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+async function ensureJobTypeFacet(page: Page, site: SiteConfig): Promise<void> {
+  const filters = site.search.jobTypeFilter;
+  const facetSelector = site.search.selectors.jobTypeFacetOption;
+  if (!filters || !filters.length || !facetSelector) {
+    return;
+  }
+
+  const targetLabel = site.search.selectors.jobTypeFacetText ?? filters[0];
+  const option = page.locator(facetSelector).filter({ hasText: buildTextMatcher(targetLabel) }).first();
+
+  try {
+    await option.waitFor({ state: 'visible', timeout: 10000 });
+  } catch (error) {
+    console.warn(`[kforce] Job type facet option "${targetLabel}" not found.`, error);
+    return;
+  }
+
+  if (await isFacetSelected(option)) {
+    return;
+  }
+
+  await option.click();
+  await page.waitForLoadState('networkidle').catch(() => undefined);
+}
+
+async function isFacetSelected(option: Locator): Promise<boolean> {
+  return option.evaluate((node) => {
+    const classAttr = (node.getAttribute('class') || '').toLowerCase();
+    if (classAttr.includes('active') || classAttr.includes('selected') || classAttr.includes('checked')) {
+      return true;
+    }
+
+    const checkbox = node.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+    if (checkbox && checkbox.checked) {
+      return true;
+    }
+
+    const ariaChecked = node.getAttribute('aria-checked');
+    if (ariaChecked && ariaChecked.toLowerCase() === 'true') {
+      return true;
+    }
+
+    return false;
+  });
+}
+
+async function ensureNewestSort(page: Page, selectors: SiteConfig['search']['selectors']): Promise<void> {
+  const { sortToggle, sortOptionText } = selectors;
+  if (!sortToggle || !sortOptionText) {
+    return;
+  }
+
+  const currentLabelSelector = selectors.sortValueLabel;
+  if (currentLabelSelector) {
+    const currentLabel = page.locator(currentLabelSelector).first();
+    if ((await currentLabel.count()) > 0) {
+      const currentText = (await currentLabel.innerText().catch(() => '')).trim();
+      if (normalizeString(currentText) === normalizeString(sortOptionText)) {
+        return;
+      }
+    }
+  }
+
+  const toggle = page.locator(sortToggle).first();
+  if ((await toggle.count()) === 0) {
+    console.warn(`[kforce] Sort toggle not found using selector ${sortToggle}`);
+    return;
+  }
+
+  await toggle.click();
+
+  const optionSelector = selectors.sortOption ?? '.Select-option';
+  const option = page
+    .locator(optionSelector)
+    .filter({ hasText: buildTextMatcher(sortOptionText) })
+    .first();
+
+  try {
+    await option.waitFor({ state: 'visible', timeout: 5000 });
+  } catch (error) {
+    console.warn(`[kforce] Sort option "${sortOptionText}" did not appear.`, error);
+    return;
+  }
+
+  await option.click();
+  await page.waitForLoadState('networkidle').catch(() => undefined);
 }
 
 async function fillLocation(page: Page, selector: string, value: string): Promise<void> {
@@ -271,6 +439,41 @@ async function fillLocation(page: Page, selector: string, value: string): Promis
 function extractJobId(href: string): string | null {
   const match = href.match(/detail\/([^/]+)/i);
   return match ? match[1] : null;
+}
+
+async function extractJobRow(card: Locator, site: SiteConfig): Promise<JobRow | null> {
+  const selectors = site.search.selectors;
+  const titleSelector = selectors.title ?? 'h2 a';
+  const titleLink = card.locator(titleSelector).first();
+
+  if ((await titleLink.count()) === 0) {
+    return null;
+  }
+
+  const rawTitle = (await titleLink.innerText()).trim();
+  const href = (await titleLink.getAttribute('href')) ?? '';
+  const url = new URL(href, site.search.url).toString();
+  if (site.disallowPatterns.some((pattern) => url.includes(pattern))) {
+    return null;
+  }
+
+  const locationText = selectors.locationText
+    ? (await card.locator(selectors.locationText).first().innerText().catch(() => '')).trim()
+    : '';
+  const postedText = selectors.posted
+    ? (await card.locator(selectors.posted).first().innerText().catch(() => '')).trim()
+    : '';
+
+  return {
+    site: site.key,
+    title: rawTitle,
+    company: 'Kforce',
+    location: locationText,
+    posted: postedText,
+    url,
+    job_id: extractJobId(href) ?? undefined,
+    scraped_at: getEasternTimeLabel()
+  };
 }
 
 function normalizeKeywords(raw: string | string[]): string[] {
@@ -298,50 +501,6 @@ function normalizeDate(input: string): string | null {
   return `${rawMonth.padStart(2, '0')}/${rawDay.padStart(2, '0')}/${year}`;
 }
 
-async function ensureNewestSort(page: Page, selectors: SearchSelectors): Promise<boolean> {
-  const { sortToggle, sortOptionText } = selectors;
-  if (!sortToggle || !sortOptionText) {
-    return false;
-  }
-
-  const currentLabelSelector = selectors.sortValueLabel;
-  if (currentLabelSelector) {
-    const currentLabel = page.locator(currentLabelSelector).first();
-    if ((await currentLabel.count()) > 0) {
-      const currentText = (await currentLabel.innerText().catch(() => '')).trim();
-      if (normalizeString(currentText) === normalizeString(sortOptionText)) {
-        return false;
-      }
-    }
-  }
-
-  const toggle = page.locator(sortToggle).first();
-  if ((await toggle.count()) === 0) {
-    console.warn(`[kforce] Sort toggle not found using selector ${sortToggle}`);
-    return false;
-  }
-
-  await toggle.click();
-
-  const optionSelector = selectors.sortOption ?? '.Select-option';
-  const option = page
-    .locator(optionSelector)
-    .filter({ hasText: buildTextMatcher(sortOptionText) })
-    .first();
-
-  try {
-    await option.waitFor({ state: 'visible', timeout: 5000 });
-  } catch (error) {
-    console.warn(`[kforce] Sort option "${sortOptionText}" did not appear.`, error);
-    return false;
-  }
-
-  await option.click();
-  await page.waitForLoadState('networkidle').catch(() => undefined);
-  await page.waitForTimeout(500);
-  return true;
-}
-
 function normalizeString(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -351,69 +510,6 @@ function buildTextMatcher(input: string): RegExp {
   return new RegExp(escaped, 'i');
 }
 
-function jobTypeMatches(value: string, filters: string[]): boolean {
-  if (!value) {
-    return false;
-  }
-  const normalizedValue = normalizeString(value);
-  return filters.some((filter) => normalizeString(filter) === normalizedValue);
-}
-
-async function ensureJobTypeFacet(page: Page, site: SiteConfig): Promise<void> {
-  const filters = site.search.jobTypeFilter;
-  const facetSelector = site.search.selectors.jobTypeFacetOption;
-  if (!filters || !filters.length || !facetSelector) {
-    return;
-  }
-
-  const targetLabel = site.search.selectors.jobTypeFacetText ?? filters[0];
-  const option = page.locator(facetSelector).filter({ hasText: buildTextMatcher(targetLabel) }).first();
-
-  try {
-    await option.waitFor({ state: 'visible', timeout: 10000 });
-  } catch (error) {
-    console.warn(`[kforce] Job type facet option "${targetLabel}" not found.`, error);
-    return;
-  }
-
-  if (await isFacetSelected(option)) {
-    return;
-  }
-
-  await option.click();
-  await page.waitForLoadState('networkidle').catch(() => undefined);
-  await page.waitForTimeout(500);
-}
-
-async function isFacetSelected(option: Locator): Promise<boolean> {
-  return option.evaluate((node) => {
-    const classAttr = (node.getAttribute('class') || '').toLowerCase();
-    if (classAttr.includes('active') || classAttr.includes('selected') || classAttr.includes('checked')) {
-      return true;
-    }
-
-    const checkbox = node.querySelector('input[type=\"checkbox\"]') as HTMLInputElement | null;
-    if (checkbox && checkbox.checked) {
-      return true;
-    }
-
-    const ariaChecked = node.getAttribute('aria-checked');
-    if (ariaChecked && ariaChecked.toLowerCase() === 'true') {
-      return true;
-    }
-
-    return false;
-  });
-}
-
-async function ensureInitialSort(page: Page, selectors: SearchSelectors): Promise<void> {
-  const cardSelector = selectors.card ?? FALLBACK_SELECTORS.card;
-  try {
-    await page.waitForSelector(cardSelector, { timeout: 15000 });
-  } catch (error) {
-    console.warn('[kforce] Initial job cards not ready for sorting.', error);
-    return;
-  }
-
-  await ensureNewestSort(page, selectors);
+function createSessionId(): string {
+  return `session-${new Date().toISOString().replace(/[:.]/g, '-')}`;
 }

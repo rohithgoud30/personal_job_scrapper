@@ -7,8 +7,14 @@ export interface OutputPaths {
   directory: string;
   csvFile: string;
   seenFile: string;
-  hour: number;
   dateFolder: string;
+}
+
+export interface SessionPaths {
+  sessionId: string;
+  sessionDir: string;
+  rolesDir: string;
+  rolesFile: string;
 }
 
 export function buildOutputPaths(
@@ -21,7 +27,6 @@ export function buildOutputPaths(
   const day = String(eastern.day).padStart(2, '0');
   const year = eastern.year;
   const dateFolder = `${month}_${day}_${year}`;
-  const hour = eastern.hour;
 
   const directory = path.join(outputConfig.root, site.host, dateFolder);
   const csvFile = path.join(directory, 'new_jobs.csv');
@@ -31,11 +36,22 @@ export function buildOutputPaths(
     directory,
     csvFile,
     seenFile,
-    hour,
     dateFolder
   };
 }
 
 export async function ensureDirectoryExists(directory: string): Promise<void> {
   await fs.promises.mkdir(directory, { recursive: true });
+}
+
+export function buildSessionPaths(output: OutputPaths, sessionId: string): SessionPaths {
+  const sessionDir = path.join(output.directory, 'sessions', sessionId);
+  const rolesDir = path.join(sessionDir, 'roles');
+  const rolesFile = path.join(rolesDir, 'new_roles.csv');
+  return {
+    sessionId,
+    sessionDir,
+    rolesDir,
+    rolesFile
+  };
 }
