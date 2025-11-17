@@ -9,7 +9,7 @@ import { buildOutputPaths, buildSessionPaths, ensureDirectoryExists, SessionPath
 import { getEasternDateLabel, getEasternTimeLabel } from '../../lib/time';
 import { env, getRunDateOverride } from '../../lib/env';
 import { sleep } from '../../lib/throttle';
-import { evaluateJobDetail, findIrrelevantJobIds, TitleEntry } from '../../lib/aiEvaluator';
+import { evaluateJobDetail, findIrrelevantJobIds, TitleEntry, TitleFilterResult } from '../../lib/aiEvaluator';
 
 const FALLBACK_SELECTORS = {
   keywords: "input[placeholder='Search by Job Title or Skill']",
@@ -65,7 +65,19 @@ export async function runKforceSite(site: SiteConfig, output: OutputConfig): Pro
     console.log(`[kforce][AI] Running title filter on ${stagedArray.length} staged roles...`);
     await writeSessionRoles(sessionPaths, stagedArray);
 
-    const removalSet = await filterTitlesWithAi(stagedArray);
+    const { removalSet, reasons } = await filterTitlesWithAi(stagedArray);
+    if (removalSet.size) {
+      console.log('[kforce][AI] Title rejections:');
+      let rejectIndex = 1;
+      for (const row of stagedArray) {
+        const key = row.job_id ?? row.url;
+        if (!removalSet.has(key)) continue;
+        const reason = reasons.get(key) ?? 'Marked irrelevant.';
+        console.log(`[kforce][AI][Title Reject #${rejectIndex}] "${row.title}" (${row.location}) – ${reason}`);
+        rejectIndex += 1;
+      }
+    }
+
     const filtered = stagedArray.filter((row) => !removalSet.has(row.job_id ?? row.url));
     if (!filtered.length) {
       console.log('[kforce] AI filtered out all titles for this session.');
@@ -390,7 +402,7 @@ export async function extractDescription(page: Page): Promise<string> {
   return await page.content();
 }
 
-async function filterTitlesWithAi(rows: SessionRole[]): Promise<Set<string>> {
+async function filterTitlesWithAi(rows: SessionRole[]): Promise<TitleFilterResult> {
   const entries: TitleEntry[] = rows.map((row) => ({
     title: row.title,
     company: row.company,

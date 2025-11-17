@@ -18,7 +18,13 @@ export interface DetailPayload {
 }
 
 interface AiIrrelevantResponse {
-  removeJobIds: string[];
+  remove?: { job_id?: string; reason?: string }[];
+  removeJobIds?: string[];
+}
+
+export interface TitleFilterResult {
+  removalSet: Set<string>;
+  reasons: Map<string, string>;
 }
 
 let openAiClient: OpenAI | null = null;
@@ -34,16 +40,19 @@ function getClient(): OpenAI {
   return openAiClient;
 }
 
-export async function findIrrelevantJobIds(entries: TitleEntry[]): Promise<Set<string>> {
+export async function findIrrelevantJobIds(entries: TitleEntry[]): Promise<TitleFilterResult> {
   if (!entries.length) {
-    return new Set();
+    return { removalSet: new Set(), reasons: new Map() };
   }
 
   const client = getClient();
   const systemPrompt = [
-    'You filter job listings for roles that fit these stacks: frontend (React, Angular, Next.js, TypeScript), backend (Java/Spring Boot, Python/FastAPI, Node.js/Express), mobile (React Native), and cloud microservices when paired with those stacks.',
-    'Return JSON { "removeJobIds": [ ...job_id... ] } listing only the postings that are clearly NOT related to these stacks/tools.',
-    'Use only the provided title/company/location/url fields. If every listing is relevant, return an empty array.'
+    'You filter job titles and remove only the roles that are clearly NOT about modern web/full-stack engineering.',
+    'Keep only roles that match: frontend (React, Angular, Next.js, TypeScript/JavaScript), backend (Java/Spring Boot, Python/FastAPI/Django/Flask, Node.js/Express), or full-stack across those. Cloud/microservices are fine only when paired with these stacks.',
+    'Remove roles that are obviously outside this scope: data/ETL (Snowflake, Informatica, Data Engineer), BI/analytics, QA/SDET, security, SRE/DevOps-only, mobile native (iOS/Android), IT support, PM/BA/ Scrum Master, ERP/CRM (Salesforce, SAP, ServiceNow, Oracle), mainframe/COBOL/Perl/C/C++, hardware/embedded/firmware, design-only (UX/UI without coding), helpdesk.',
+    'If a title is ambiguous or might fit the target stacks, KEEP it. Only remove when it is clearly irrelevant to those stacks.',
+    'Return JSON { "remove": [ { "job_id": string, "reason": string } ] }. reason must be one concise clause (e.g., "Data engineer / ETL role"). If every listing is relevant, return an empty array.',
+    'Use only the provided title/company/location/url fields.'
   ].join(' ');
 
   const userContent = JSON.stringify(entries, null, 2);
@@ -52,6 +61,7 @@ export async function findIrrelevantJobIds(entries: TitleEntry[]): Promise<Set<s
     try {
       const completion = await client.chat.completions.create({
         model: 'glm-4.6',
+        temperature: 0,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: systemPrompt },
@@ -61,7 +71,30 @@ export async function findIrrelevantJobIds(entries: TitleEntry[]): Promise<Set<s
 
       const message = completion.choices[0]?.message?.content ?? '{}';
       const parsed: AiIrrelevantResponse = JSON.parse(message);
-      return new Set(parsed.removeJobIds ?? []);
+      const removalSet = new Set<string>();
+      const reasons = new Map<string, string>();
+
+      if (Array.isArray(parsed.remove)) {
+        for (const entry of parsed.remove) {
+          const id = (entry?.job_id ?? '').trim();
+          if (!id) continue;
+          removalSet.add(id);
+          const reason = typeof entry?.reason === 'string' && entry.reason.trim().length > 0
+            ? entry.reason.trim()
+            : 'Marked irrelevant.';
+          reasons.set(id, reason);
+        }
+      }
+
+      if (!removalSet.size && Array.isArray(parsed.removeJobIds)) {
+        for (const id of parsed.removeJobIds) {
+          if (typeof id === 'string' && id.trim()) {
+            removalSet.add(id.trim());
+          }
+        }
+      }
+
+      return { removalSet, reasons };
     } catch (error) {
       lastError = error;
       if (attempt < 3) {
