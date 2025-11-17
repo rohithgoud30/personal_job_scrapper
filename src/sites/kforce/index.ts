@@ -16,7 +16,7 @@ const FALLBACK_SELECTORS = {
 };
 
 export async function runKforceSite(site: SiteConfig, output: OutputConfig): Promise<void> {
-  const keywords = normalizeKeywords(site.search.criteria.keywords);
+  const keywords = normalizeKeywords(site.search.criteria.searchKeywords);
   if (!keywords.length) {
     console.warn('[kforce] No keywords configured. Skipping run.');
     return;

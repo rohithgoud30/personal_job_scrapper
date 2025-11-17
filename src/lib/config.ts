@@ -51,7 +51,7 @@ export interface SearchConfig {
 }
 
 export interface SearchCriteria {
-  keywords: string | string[];
+  searchKeywords: string | string[];
   location?: string;
 }
 

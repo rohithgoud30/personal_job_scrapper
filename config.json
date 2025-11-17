@@ -26,7 +26,7 @@
       "search": {
         "url": "https://www.kforce.com/find-work/search-jobs/",
         "criteria": {
-          "keywords": [
+          "searchKeywords": [
             "full stack developer",
             "full-stack developer",
             "full stack engineer",
@@ -84,11 +84,17 @@
             "Node REST API",
             "Express.js developer",
             "AWS backend",
-            "(\"full stack\" OR \"software engineer\") AND (Java AND \"spring boot\") AND (React OR Angular)",
-            "(\"full stack developer\") AND (Python) AND (React OR ReactJS)",
-            "(\"full stack\" OR MERN OR MEAN) AND (Node.js) AND (React OR Angular)",
-            "(frontend OR \"UI developer\") AND (React OR Angular OR \"Next.js\" OR TypeScript)",
-            "(backend OR \"backend engineer\") AND (Java OR Python OR Node.js) AND (\"REST API\" OR microservices)"
+            "full stack Java Spring Boot React developer",
+            "full stack Java Spring Boot Angular engineer",
+            "full stack Python React developer",
+            "MERN stack Node React engineer",
+            "MEAN stack Node Angular engineer",
+            "frontend React UI developer",
+            "frontend Angular UI developer",
+            "frontend Next.js TypeScript developer",
+            "backend Java REST API engineer",
+            "backend Python microservices engineer",
+            "backend Node.js REST API engineer"
           ]
         },
         "postedTodayOnly": true,
