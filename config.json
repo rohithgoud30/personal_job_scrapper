@@ -1,0 +1,137 @@
+{
+  "schedule": {
+    "cron": "5 * * * *"
+  },
+  "output": {
+    "root": "data",
+    "pattern": "{root}/{host}/{MM_DD_YYYY}/{H}.csv"
+  },
+  "sites": [
+    {
+      "key": "kforce",
+      "host": "kforce.com",
+      "userDataDir": ".playwright/kforce",
+      "login": {
+        "required": false,
+        "url": "https://www.kforce.com/login/",
+        "email": "",
+        "password": "",
+        "selectors": {
+          "openLogin": "",
+          "email": "input[type=email]",
+          "password": "input[type=password]",
+          "submit": "button[type=submit]"
+        }
+      },
+      "search": {
+        "url": "https://www.kforce.com/find-work/search-jobs/",
+        "criteria": {
+          "keywords": [
+            "full stack developer",
+            "full-stack developer",
+            "full stack engineer",
+            "full-stack engineer",
+            "full stack software engineer",
+            "full stack application developer",
+            "web developer full stack",
+            "software engineer full stack",
+            "full stack Java developer",
+            "full stack Python developer",
+            "full stack JavaScript developer",
+            "MERN stack developer",
+            "MEAN stack developer",
+            "Java",
+            "Python",
+            "FastAPI",
+            "Node.js",
+            "Express.js",
+            "React",
+            "ReactJS",
+            "Angular",
+            "Next.js",
+            "Nest.js",
+            "TypeScript",
+            "JavaScript",
+            "REST API",
+            "Microservices",
+            "frontend developer",
+            "frontend engineer",
+            "UI developer",
+            "UI engineer",
+            "web developer",
+            "JavaScript developer",
+            "React developer",
+            "Angular developer",
+            "Next.js developer",
+            "TypeScript developer",
+            "React Native",
+            "UI development",
+            "SPA development",
+            "Web application developer",
+            "backend developer",
+            "backend engineer",
+            "server-side developer",
+            "API developer",
+            "microservices developer",
+            "backend software engineer",
+            "application backend developer",
+            "Java backend developer",
+            "Java cloud developer",
+            "Java AWS developer",
+            "Python backend developer",
+            "Python REST API",
+            "Python microservices",
+            "Node.js backend developer",
+            "Node REST API",
+            "Express.js developer",
+            "AWS backend",
+            "(\"full stack\" OR \"software engineer\") AND (Java AND \"spring boot\") AND (React OR Angular)",
+            "(\"full stack developer\") AND (Python) AND (React OR ReactJS)",
+            "(\"full stack\" OR MERN OR MEAN) AND (Node.js) AND (React OR Angular)",
+            "(frontend OR \"UI developer\") AND (React OR Angular OR \"Next.js\" OR TypeScript)",
+            "(backend OR \"backend engineer\") AND (Java OR Python OR Node.js) AND (\"REST API\" OR microservices)"
+          ]
+        },
+        "postedTodayOnly": true,
+        "jobTypeFilter": ["Contract"],
+        "selectors": {
+          "keywords": "input[placeholder='Search by Job Title or Skill']",
+          "location": ".main-search-bar .Select input",
+          "submit": ".main-search-bar .submitIcon",
+          "card": ".data-jobs li",
+          "title": "h2 a",
+          "locationText": ".job-list-detail .locations",
+          "posted": "h2 span",
+          "next": ".data-job-pagination .btn-line-darkCerulean",
+          "sortToggle": ".facets .Select-control",
+          "sortOption": ".Select-option",
+          "sortValueLabel": ".facets .Select-value-label",
+          "sortOptionText": "Newest Jobs First",
+          "jobType": ".job-list-detail .type",
+          "jobTypeFacetOption": ".facetItem.TypeCode li",
+          "jobTypeFacetText": "Contract"
+        }
+      },
+      "run": {
+        "maxPages": 2,
+        "throttleSeconds": 8,
+        "pageDelaySeconds": 30,
+        "keywordDelaySeconds": 45
+      },
+      "disallowPatterns": [
+        "apply-online",
+        "/search-jobs/job-detail/apply-online.aspx",
+        "apply-online.aspx"
+      ],
+      "cookieConsent": {
+        "buttonSelectors": [
+          "#onetrust-accept-btn-handler",
+          "button#onetrust-accept-btn-handler",
+          "button:has-text(\"Accept\")"
+        ],
+        "textMatches": ["Accept All Cookies", "Accept"],
+        "waitForSeconds": 2
+      }
+    }
+  ]
+}
