@@ -1,4 +1,4 @@
-# Kforce Scraper Architecture Overview
+# Personal Job Scraper Architecture (current Kforce implementation)
 
 ## 1. High-Level Flow
 - A single JSON config (`config.json`) defines scheduling, output paths, and all site-specific settings. Nothing relies on `.env` files.
@@ -33,7 +33,7 @@
 - CSV writing is append-but-rewrite: new rows are generated first, then existing content is read and re-saved with the new block at the top. Headers remain intact.
 
 ## 7. Observability & Recovery
-- Console logs announce each keyword’s progress (`scraped`, `new`, cumulative totals) along with pagination skips when no “today” results are found.
+- Console logs announce each keyword’s progress (`scraped`, `new`, cumulative totals) along with pagination skips when no “today” results are found. As you onboard more sites, reuse the same logging patterns for consistency across portals.
 - If Playwright selectors fail due to DOM changes, the headful window stays open so you can inspect and update the JSON selectors quickly.
 - Persistent profiles mean login is typically one-time; if the session expires, the next run surfaces a visible login screen for manual intervention.
 - A live elapsed timer (similar to npm installs) shows progress while the run is active, and the CLI prints a completion summary with the total runtime once it finishes.
