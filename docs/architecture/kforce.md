@@ -20,8 +20,8 @@ This document explains the entire workflow in plain language so anyone can under
 - `seen.json` continues to store stable job IDs per date, so `new_roles.csv` only contains brand-new rows. After a job is approved later in the pipeline, its ID is added to `seen.json` to prevent reprocessing.
 
 ## 5. Two-Stage AI Filtering
-1. **Title array filtering** – After all keywords finish, the scraper sends an array of `{ title, company, location, url, job_id }` objects to the Z.AI `glm-4.6` model. The model returns the job IDs that should be removed. Those rows are deleted from the session file so only promising roles remain.
-2. **Full-page evaluation** – Each remaining role is opened individually. The full job description is captured and sent to the `glm-4.5` model. Only roles that receive `accepted: true` are promoted to the daily `new_jobs.csv`.
+1. **Title array filtering** – After all keywords finish, the scraper sends an array of `{ title, company, location, url, job_id }` objects to the Z.AI `glm-4.6` model. The model returns the job IDs that should be removed (non-web-stack roles). Those rows are deleted from the session file so only promising roles remain. Call retries up to 3 times with backoff.
+2. **Full-page evaluation** – Each remaining role is opened individually. If the description is short, the scraper waits 10s (then 30s) and re-extracts. The full text is passed to `glm-4.5-Air`, which enforces the web-stack focus and rejects explicit 6+ year experience requirements while allowing 5/`5+`. Reasons are logged per rejection. Calls also retry up to 3 times.
 
 ## 6. Final Output
 - Approved jobs are appended (newest first) to `data/<host>/<MM_DD_YYYY>/new_jobs.csv` with columns `site,title,company,location,posted,url,job_id,scraped_at`. The day-level CSV is rewritten so new entries stay on top.
