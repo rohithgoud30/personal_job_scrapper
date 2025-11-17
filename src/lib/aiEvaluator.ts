@@ -49,7 +49,7 @@ export async function findIrrelevantJobIds(entries: TitleEntry[]): Promise<Set<s
 
   const userContent = JSON.stringify(entries, null, 2);
   const completion = await client.chat.completions.create({
-    model: 'openai/gpt-4o',
+    model: 'openai/gpt-oss-120b',
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: systemPrompt },
@@ -72,7 +72,7 @@ export async function evaluateJobDetail(payload: DetailPayload): Promise<boolean
   const userContent = `Title: ${payload.title}\nCompany: ${payload.company}\nLocation: ${payload.location}\nURL: ${payload.url}\nDescription:\n${payload.description}`;
 
   const completion = await client.chat.completions.create({
-    model: 'openai/gpt-4o',
+    model: 'openai/gpt-oss-120b',
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: systemPrompt },
