@@ -5,11 +5,13 @@ import { OutputConfig, SiteConfig } from '../../lib/config';
 import { acceptCookieConsent } from '../../lib/cookies';
 import { appendJobRows, JobRow } from '../../lib/csv';
 import { computeJobKey, loadSeenStore, saveSeenStore } from '../../lib/dedupe';
-import { buildOutputPaths, buildSessionPaths, ensureDirectoryExists, SessionPaths } from '../../lib/paths';
+import { buildOutputPaths, buildSessionPaths, ensureDirectoryExists, OutputPaths, SessionPaths } from '../../lib/paths';
+import { findSessionById, parseDateFolderLabel, readSessionCsv } from '../../lib/session';
 import { getEasternDateLabel, getEasternTimeLabel } from '../../lib/time';
 import { env, getRunDateOverride } from '../../lib/env';
 import { sleep } from '../../lib/throttle';
 import { evaluateJobDetail, findIrrelevantJobIds, TitleEntry, TitleFilterResult } from '../../lib/aiEvaluator';
+import { RunOptions } from '../types';
 
 interface SessionRole extends JobRow {
   session_id: string;
@@ -33,27 +35,70 @@ type RouteHit = {
   launchDate?: number | string;
 };
 
-export async function runRandstadSite(site: SiteConfig, output: OutputConfig): Promise<void> {
+export async function runRandstadSite(
+  site: SiteConfig,
+  output: OutputConfig,
+  options: RunOptions = {}
+): Promise<void> {
+  const resumeSessionId = options.resumeSessionId?.trim();
+  const skipBatchDelay = Boolean(options.skipBatchPause);
   const keywords = normalizeKeywords(site.search.criteria.searchKeywords);
-  if (!keywords.length) {
+  if (!resumeSessionId && !keywords.length) {
     console.warn('[randstad] No keywords configured. Skipping run.');
     return;
   }
 
   const runDateOverride = getRunDateOverride();
-  const runDate = runDateOverride ?? new Date();
-  const isBackfill = Boolean(runDateOverride);
-  const dateLabel = getEasternDateLabel(runDate);
-  console.log(`[randstad] ${isBackfill ? 'Backfill' : 'Live'} run using date ${dateLabel}.`);
+  let runDate = runDateOverride ?? new Date();
+  let isBackfill = Boolean(runDateOverride);
+  let outputPaths: OutputPaths;
+  let sessionPaths: SessionPaths;
+  let stagedArray: SessionRole[] = [];
 
-  const outputPaths = buildOutputPaths(output, site, runDate);
-  const sessionId = createSessionId();
-  const sessionPaths = buildSessionPaths(outputPaths, sessionId);
-  await ensureDirectoryExists(sessionPaths.rolesDir);
+  if (resumeSessionId) {
+    const located = await findSessionById(output, site, resumeSessionId);
+    if (!located) {
+      console.warn(
+        `[randstad] Session ${resumeSessionId} not found under ${path.join(output.root, site.host)}.`
+      );
+      return;
+    }
+
+    outputPaths = located.outputPaths;
+    sessionPaths = located.sessionPaths;
+    stagedArray = (await readSessionCsv(sessionPaths.rolesFile)).map((row) => ({
+      session_id: row.session_id,
+      keyword: row.keyword,
+      site: row.site,
+      title: row.title,
+      company: row.company,
+      location: row.location,
+      posted: row.posted,
+      url: row.url,
+      job_id: row.job_id || undefined,
+      scraped_at: row.scraped_at
+    }));
+
+    const parsedDate = parseDateFolderLabel(outputPaths.dateFolder);
+    if (parsedDate) {
+      runDate = parsedDate;
+      isBackfill = false;
+    }
+
+    console.log(
+      `[randstad] Resuming AI-only run for session ${resumeSessionId} (date folder ${outputPaths.dateFolder}).`
+    );
+  } else {
+    const dateLabel = getEasternDateLabel(runDate);
+    console.log(`[randstad] ${isBackfill ? 'Backfill' : 'Live'} run using date ${dateLabel}.`);
+
+    outputPaths = buildOutputPaths(output, site, runDate);
+    const sessionId = createSessionId();
+    sessionPaths = buildSessionPaths(outputPaths, sessionId);
+    await ensureDirectoryExists(sessionPaths.rolesDir);
+  }
 
   const seen = await loadSeenStore(outputPaths.seenFile);
-  const staged = new Map<string, SessionRole>();
-
   const userDataDir = path.resolve(site.userDataDir);
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -61,14 +106,31 @@ export async function runRandstadSite(site: SiteConfig, output: OutputConfig): P
   });
 
   try {
-    await scrapeKeywordsInBatches(context, site, keywords, seen, staged, sessionId, runDate, isBackfill);
+    if (!resumeSessionId) {
+      const staged = new Map<string, SessionRole>();
+      await scrapeKeywordsInBatches(
+        context,
+        site,
+        keywords,
+        seen,
+        staged,
+        sessionPaths.sessionId,
+        runDate,
+        isBackfill,
+        skipBatchDelay
+      );
 
-    if (!staged.size) {
-      console.log('[randstad] No new roles detected for this session.');
+      if (!staged.size) {
+        console.log('[randstad] No new roles detected for this session.');
+        return;
+      }
+
+      stagedArray = Array.from(staged.values());
+    } else if (!stagedArray.length) {
+      console.log(`[randstad] Session ${resumeSessionId} has no staged roles to evaluate.`);
       return;
     }
 
-    const stagedArray = Array.from(staged.values());
     console.log(`[randstad][AI] Running title filter on ${stagedArray.length} staged roles...`);
     await writeSessionRoles(sessionPaths, stagedArray);
 
@@ -120,9 +182,14 @@ async function scrapeKeywordsInBatches(
   staged: Map<string, SessionRole>,
   sessionId: string,
   runDate: Date,
-  isBackfill: boolean
+  isBackfill: boolean,
+  skipBatchDelay: boolean
 ): Promise<void> {
   const batchSize = env.keywordBatchSize;
+  if (skipBatchDelay) {
+    console.log('[randstad] Batch wait disabled; running keyword batches back-to-back.');
+  }
+
   for (let i = 0; i < keywords.length; i += batchSize) {
     const batch = keywords.slice(i, i + batchSize);
     await Promise.all(
@@ -132,7 +199,7 @@ async function scrapeKeywordsInBatches(
     );
 
     const hasMoreBatches = i + batchSize < keywords.length;
-    if (!isBackfill && hasMoreBatches) {
+    if (!isBackfill && hasMoreBatches && !skipBatchDelay) {
       console.log('[randstad] Sleeping 25s before next keyword batch (polite crawl).');
       await sleep(25);
     }

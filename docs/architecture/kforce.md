@@ -9,6 +9,12 @@ This document explains the entire workflow in plain language so anyone can under
 ## 2. Execution Modes & Parallelism
 - The default command (`npm run start:once -- --site <key>`) launches a headful persistent browser once. Keywords are processed in parallel batches (size drawn from `KEYWORD_BATCH_SIZE`), each batch using separate Playwright tabs so five keywords can run simultaneously (then the next five, etc.).
 - Optional scheduling (`--schedule`) still uses `node-cron`, but only when you explicitly pass the flag. Multiple sites can be specified via comma-separated `--site` values.
+- Manual overrides: `--skip-batch-wait` removes the 25–30s pause between keyword batches, and `--resume-session <sessionId>` reruns only the AI filtering/detail evaluation using `data/<host>/<date>/sessions/<sessionId>/roles/new_roles.csv`.
+
+### How to resume AI-only
+- Locate the session folder created by the scrape you want to reuse (example: `data/kforce.com/11_18_2025/sessions/session-2025-11-18T18-15-03-000Z/roles/new_roles.csv`).
+- Run `npm run start:once -- --site kforce --resume-session session-2025-11-18T18-15-03-000Z`.
+- The scraper skips keyword scraping, re-applies the title filter, and re-runs detail AI scoring into the same date folder.
 
 ## 3. Browser Session & Compliance
 - Playwright uses `launchPersistentContext` against `.playwright/<key>`. Close any older windows using that profile before starting a new run; the browser enforces a singleton lock to prevent corruption.
@@ -20,8 +26,8 @@ This document explains the entire workflow in plain language so anyone can under
 - `seen.json` continues to store stable job IDs per date, so `new_roles.csv` only contains brand-new rows. After a job is approved later in the pipeline, its ID is added to `seen.json` to prevent reprocessing.
 
 ## 5. Two-Stage AI Filtering
-1. **Title array filtering** – After all keywords finish, the scraper sends an array of `{ title, company, location, url, job_id }` objects to the Z.AI `glm-4.6` model. The model returns the job IDs that should be removed (non-web-stack roles). Those rows are deleted from the session file so only promising roles remain. Call retries up to 3 times with backoff.
-2. **Full-page evaluation** – Each remaining role is opened individually. If the description is short, the scraper waits 10s (then 30s) and re-extracts. The full text is passed to `glm-4.5-Air`, which enforces the web-stack focus and rejects explicit 6+ year experience requirements while allowing 5/`5+`. Reasons are logged per rejection. Calls also retry up to 3 times.
+1. **Title array filtering** – After all keywords finish, the scraper sends an array of `{ title, company, location, url, job_id }` objects to the Z.AI `glm-4.6` model. The model returns the job IDs that should be removed (non-web-stack roles, Go/Golang, .NET/C#, etc.). Those rows are deleted from the session file so only promising roles remain. Call retries up to 3 times with backoff.
+2. **Full-page evaluation** – Each remaining role is opened individually. If the description is short, the scraper waits 10s (then 30s) and re-extracts. The full text is passed to `glm-4.5-Air`, which enforces the web-stack focus, rejects Go/Golang and .NET/C#, and rejects explicit 6+ year experience requirements while allowing 5/`5+`. Reasons are logged per rejection. Calls also retry up to 3 times.
 
 ## 6. Final Output
 - Approved jobs are appended (newest first) to `data/<host>/<MM_DD_YYYY>/new_jobs.csv` with columns `site,title,company,location,posted,url,job_id,scraped_at`. The day-level CSV is rewritten so new entries stay on top.

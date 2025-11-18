@@ -49,7 +49,7 @@ export async function findIrrelevantJobIds(entries: TitleEntry[]): Promise<Title
   const systemPrompt = [
     'You filter job titles and remove only the roles that are clearly NOT about modern web/full-stack engineering.',
     'Keep only roles that match: frontend (React, Angular, Next.js, TypeScript/JavaScript), backend (Java/Spring Boot, Python/FastAPI/Django/Flask, Node.js/Express), or full-stack across those. Cloud/microservices are fine only when paired with these stacks.',
-    'Remove roles that are obviously outside this scope: data/ETL (Snowflake, Informatica, Data Engineer), BI/analytics, QA/SDET, security, SRE/DevOps-only, mobile native (iOS/Android), IT support, PM/BA/ Scrum Master, ERP/CRM (Salesforce, SAP, ServiceNow, Oracle), mainframe/COBOL/Perl/C/C++, hardware/embedded/firmware, design-only (UX/UI without coding), helpdesk.',
+    'Remove roles that are obviously outside this scope: data/ETL (Snowflake, Informatica, Data Engineer), BI/analytics, QA/SDET, security, SRE/DevOps-only, mobile native (iOS/Android), IT support, PM/BA/ Scrum Master, ERP/CRM (Salesforce, SAP, ServiceNow, Oracle), mainframe/COBOL/Perl/C/C++, hardware/embedded/firmware, design-only (UX/UI without coding), helpdesk. Also remove Go/Golang, .NET, and C# roles.',
     'If a title is ambiguous or might fit the target stacks, KEEP it. Only remove when it is clearly irrelevant to those stacks.',
     'Return JSON { "remove": [ { "job_id": string, "reason": string } ] }. reason must be one concise clause (e.g., "Data engineer / ETL role"). If every listing is relevant, return an empty array.',
     'Use only the provided title/company/location/url fields.'
@@ -110,7 +110,7 @@ export async function evaluateJobDetail(payload: DetailPayload): Promise<{ accep
   const client = getClient();
   const systemPrompt = [
     'You read a job description and decide if it fits these web/backend/full-stack stacks: frontend (React or Angular, TypeScript/JavaScript), backend (Java/Spring Boot, Python FastAPI/Django/Flask, or Node.js/Express), or full stack combining those. Cloud is fine only as a complement to these stacks.',
-    'Reject roles that are primarily: data engineering/ETL (Snowflake, Informatica, ETL), mobile (React Native), business analyst/PM, infrastructure/ops/observability-only, non-software roles, legacy tech (COBOL, Perl, C/C++, mainframe), or generic cloud-only without the web stacks.',
+    'Reject roles that are primarily: data engineering/ETL (Snowflake, Informatica, ETL), mobile (React Native), business analyst/PM, infrastructure/ops/observability-only, non-software roles, legacy tech (COBOL, Perl, C/C++, mainframe), Go/Golang, .NET/C#, or generic cloud-only without the web stacks.',
     'Return JSON { "accepted": boolean, "reasoning": string } and set accepted=true only if the stack aligns with the above AND the experience requirement is five years or less. Phrases like "1-5 years", "up to 5 years", or "5+ years" are acceptable. Reject only roles that explicitly demand more than five years (e.g., "6+ years", "7-10 years", "at least six years"). The reasoning should be a concise one-liner explaining accept/reject.'
   ].join(' ');
 

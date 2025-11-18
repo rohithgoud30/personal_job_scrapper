@@ -9,6 +9,10 @@ Headful Playwright automation that you can run on-demand to capture contract lis
 4. Run once (default): `npm run start:once -- --site kforce`. The run stages roles per session, sends the combined titles to AI for pruning, then visits each approved job for a full-text AI check before writing to the daily CSV. Make sure no other Chromium window is using the site’s persistent profile (e.g., `.playwright/kforce`) before launching.
 5. Optional scheduling later: `npm run start -- --site <key> --schedule` (honors `schedule.cron` only when you add `--schedule`; manual runs remain the default). When you add more sites, pass comma-separated keys (e.g., `--site kforce,newPortal`).
 
+## Shortcuts
+- Skip the 25–30s pauses between keyword batches when you need faster AI feedback: add `--skip-batch-wait` (use sparingly to stay polite to the host).
+- Restart just the AI portion from a saved scrape: `npm run start:once -- --site kforce --resume-session <session-id>`. The session ID matches the folder under `data/<host>/<date>/sessions/<session-id>/roles/new_roles.csv`.
+
 ## Key Behaviors
 - **Persistent profile**: `.playwright/<site>` stores cookies/login so subsequent runs reuse the session.
 - **Cookie consent**: OneTrust banner is auto-accepted on load via selectors in config.
@@ -17,7 +21,7 @@ Headful Playwright automation that you can run on-demand to capture contract lis
 - **Per-day dedupe**: `seen.json` (per date folder) tracks stable job IDs; only unseen postings make it into the CSV.
 - **Two-stage AI filtering with retries + reasoning**:
   1. After scraping completes, all staged titles/companies/locations/URLs are sent in one array to the Z.AI `glm-4.6` model; it removes anything not tied to the target web stacks (frontend React/Angular/Next.js/TS, backend Java/Spring Boot/Python/FastAPI/Node/Express, React Native, cloud microservices alongside those stacks).
-  2. Each remaining role is visited individually; descriptions are re-fetched if short (10s, then 30s) before scoring with `glm-4.5-Air`. The model enforces the stack match, accepts 5/`5+` years, and rejects explicit 6+ requirements. Accepted/rejected roles include a one-line reason in the logs. Both AI calls retry up to 3 times with backoff.
+  2. Each remaining role is visited individually; descriptions are re-fetched if short (10s, then 30s) before scoring with `glm-4.5-Air`. The model enforces the stack match, accepts 5/`5+` years, rejects explicit 6+ requirements, and rejects Go/Golang/.NET/C#. Accepted/rejected roles include a one-line reason in the logs. Both AI calls retry up to 3 times with backoff.
 - **Timestamps**: Every row includes `scraped_at` (e.g., `1:05 PM ET`) for quick auditing.
 - **CSV columns**: `site,title,company,location,posted,url,job_id,scraped_at` (no summary/description text stored). Each site writes into `data/<host>/<date>/new_jobs.csv`.
 - **Run timer + summary**: While the scraper runs you’ll see a live elapsed timer (like a package install), and when it finishes the CLI logs the total duration.
