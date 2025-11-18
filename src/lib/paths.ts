@@ -29,7 +29,7 @@ export function buildOutputPaths(
   const dateFolder = `${month}_${day}_${year}`;
 
   const directory = path.join(outputConfig.root, site.host, dateFolder);
-  const csvFile = path.join(directory, 'new_jobs.csv');
+  const csvFile = path.join(directory, `new_jobs_${dateFolder}.csv`);
   const seenFile = path.join(directory, 'seen.json');
 
   return {
