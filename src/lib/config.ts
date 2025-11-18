@@ -4,6 +4,7 @@ import path from 'path';
 export interface ConfigFile {
   schedule: ScheduleConfig;
   output: OutputConfig;
+  sharedSearchKeywords?: string | string[];
   sites: SiteConfig[];
 }
 
@@ -97,6 +98,27 @@ export function loadConfig(customPath?: string): ConfigFile {
 
   const raw = fs.readFileSync(configPath, 'utf-8');
   const data = JSON.parse(raw) as ConfigFile;
+
+  const shared = normalizeKeywordsInput(data.sharedSearchKeywords);
+  if (shared.length) {
+    data.sites = data.sites.map((site) => {
+      const existing = normalizeKeywordsInput(site.search.criteria.searchKeywords);
+      if (existing.length) {
+        return site;
+      }
+      return {
+        ...site,
+        search: {
+          ...site.search,
+          criteria: {
+            ...site.search.criteria,
+            searchKeywords: shared
+          }
+        }
+      };
+    });
+  }
+
   return data;
 }
 
@@ -106,4 +128,10 @@ export function getSiteConfig(config: ConfigFile, key: string): SiteConfig {
     throw new Error(`Site config for key "${key}" was not found.`);
   }
   return site;
+}
+
+function normalizeKeywordsInput(value: string | string[] | undefined): string[] {
+  if (!value) return [];
+  const arr = Array.isArray(value) ? value : [value];
+  return arr.map((k) => k.trim()).filter(Boolean);
 }

@@ -2,11 +2,15 @@ import cron from 'node-cron';
 import readline from 'readline';
 import { loadConfig, OutputConfig, SiteConfig } from './lib/config';
 import { runKforceSite } from './sites/kforce';
+import { runRandstadSite } from './sites/randstadusa';
 
 async function runSite(site: SiteConfig, output: OutputConfig): Promise<void> {
   switch (site.key) {
     case 'kforce':
       await runKforceSite(site, output);
+      break;
+    case 'randstadusa':
+      await runRandstadSite(site, output);
       break;
     default:
       console.warn(`No runner implemented for site key: ${site.key}`);
