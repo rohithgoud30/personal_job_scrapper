@@ -1,6 +1,6 @@
 # Personal Job Scraper (Playwright + TypeScript)
 
-Headful Playwright automation that you can run on-demand to capture contract listings from Kforce today—and easily extend to other job boards tomorrow. Each site is driven entirely by JSON config, so adding new portals is just a matter of duplicating the site block. Results are saved per-day to `data/<host>/{MM_DD_YYYY}/new_jobs.csv` in US Eastern time (one CSV per day).
+Headful Playwright automation that you can run on-demand to capture contract listings from Kforce today—and easily extend to other job boards tomorrow. Each site is driven entirely by JSON config, so adding new portals is just a matter of duplicating the site block. Results are saved per-day to `data/<host>/{MM_DD_YYYY}/new_jobs_{MM_DD_YYYY}.csv` in US Eastern time (one CSV per day).
 
 ## Getting Started
 1. Install dependencies and browser: `npm install && npx playwright install chromium`.
@@ -17,13 +17,13 @@ Headful Playwright automation that you can run on-demand to capture contract lis
 - **Persistent profile**: `.playwright/<site>` stores cookies/login so subsequent runs reuse the session.
 - **Cookie consent**: OneTrust banner is auto-accepted on load via selectors in config.
 - **Contract-only filtering**: `jobTypeFilter` + `jobTypeFacet*` selectors ensure the Contract facet is selected before searching; each job card is double-checked for the same type.
-- **Newest-first ordering**: The search dropdown is switched to “Newest Jobs First” before scraping, and each day’s `new_jobs.csv` is rewritten so the latest records appear at the top.
+- **Newest-first ordering**: The search dropdown is switched to “Newest Jobs First” before scraping, and each day’s `new_jobs_{date}.csv` is rewritten so the latest records appear at the top.
 - **Per-day dedupe**: `seen.json` (per date folder) tracks stable job IDs; only unseen postings make it into the CSV.
 - **Two-stage AI filtering with retries + reasoning**:
   1. After scraping completes, all staged titles/companies/locations/URLs are sent in one array to the Z.AI `glm-4.6` model; it removes anything not tied to the target web stacks (frontend React/Angular/Next.js/TS, backend Java/Spring Boot/Python/FastAPI/Node/Express, React Native, cloud microservices alongside those stacks).
-  2. Each remaining role is visited individually; descriptions are re-fetched if short (10s, then 30s) before scoring with `glm-4.5-Air`. The model enforces the stack match, accepts 5/`5+` years, rejects explicit 6+ requirements, and rejects Go/Golang/.NET/C#. Accepted/rejected roles include a one-line reason in the logs. Both AI calls retry up to 3 times with backoff.
+  2. Each remaining role is visited individually; descriptions are re-fetched if short (10s, then 30s) before scoring with `glm-4.5-Air`. The model enforces the stack match, accepts 5/`5+`/`6+` years, and only rejects if the description explicitly asks for more than six years (e.g., `7+`, `8-10`). It still rejects Go/Golang/.NET/C#. Accepted/rejected roles include a one-line reason in the logs. Both AI calls retry up to 3 times with backoff.
 - **Timestamps**: Every row includes `scraped_at` (e.g., `1:05 PM ET`) for quick auditing.
-- **CSV columns**: `site,title,company,location,posted,url,job_id,scraped_at` (no summary/description text stored). Each site writes into `data/<host>/<date>/new_jobs.csv`.
+- **CSV columns**: `site,title,company,location,posted,url,job_id,scraped_at` (no summary/description text stored). Each site writes into `data/<host>/<date>/new_jobs_{date}.csv`.
 - **Run timer + summary**: While the scraper runs you’ll see a live elapsed timer (like a package install), and when it finishes the CLI logs the total duration.
 
 ## Config Highlights (`config.json`)

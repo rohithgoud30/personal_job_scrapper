@@ -27,10 +27,10 @@ This document explains the entire workflow in plain language so anyone can under
 
 ## 5. Two-Stage AI Filtering
 1. **Title array filtering** – After all keywords finish, the scraper sends an array of `{ title, company, location, url, job_id }` objects to the Z.AI `glm-4.6` model. The model returns the job IDs that should be removed (non-web-stack roles, Go/Golang, .NET/C#, etc.). Those rows are deleted from the session file so only promising roles remain. Call retries up to 3 times with backoff.
-2. **Full-page evaluation** – Each remaining role is opened individually. If the description is short, the scraper waits 10s (then 30s) and re-extracts. The full text is passed to `glm-4.5-Air`, which enforces the web-stack focus, rejects Go/Golang and .NET/C#, and rejects explicit 6+ year experience requirements while allowing 5/`5+`. Reasons are logged per rejection. Calls also retry up to 3 times.
+2. **Full-page evaluation** – Each remaining role is opened individually. If the description is short, the scraper waits 10s (then 30s) and re-extracts. The full text is passed to `glm-4.5-Air`, which enforces the web-stack focus, rejects Go/Golang and .NET/C#, and allows 5/`5+`/`6+` years (rejects only when the posting explicitly asks for more than six years, e.g., `7+`). Reasons are logged per rejection. Calls also retry up to 3 times.
 
 ## 6. Final Output
-- Approved jobs are appended (newest first) to `data/<host>/<MM_DD_YYYY>/new_jobs.csv` with columns `site,title,company,location,posted,url,job_id,scraped_at`. The day-level CSV is rewritten so new entries stay on top.
+- Approved jobs are appended (newest first) to `data/<host>/<MM_DD_YYYY>/new_jobs_<MM_DD_YYYY>.csv` with columns `site,title,company,location,posted,url,job_id,scraped_at`. The day-level CSV is rewritten so new entries stay on top.
 - Each run prints how many roles were accepted and where they were written.
 
 ## 7. Observability & Recovery
