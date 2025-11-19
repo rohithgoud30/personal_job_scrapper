@@ -61,18 +61,26 @@ function scheduleSites(
   options: RunOptions
 ): void {
   const config = loadConfig();
-  const filterLabel = siteFilter
-    ? ` for sites [${[...siteFilter].join(", ")}]`
-    : "";
-  console.log(
-    `Scheduling hourly runs${filterLabel} with cron pattern ${config.schedule.cron}`
-  );
-  cron.schedule(config.schedule.cron, () => {
-    console.log(`[scheduler] Triggering scrape at ${new Date().toISOString()}`);
-    runAllSites(siteFilter, options).catch((error) => {
-      console.error("[scheduler] run failed", error);
+  if (config.schedule) {
+    const filterLabel = siteFilter
+      ? ` for sites [${[...siteFilter].join(", ")}]`
+      : "";
+    console.log(
+      `Scheduling hourly runs${filterLabel} with cron pattern ${config.schedule.cron}`
+    );
+    cron.schedule(config.schedule.cron, () => {
+      console.log(
+        `[scheduler] Triggering scrape at ${new Date().toISOString()}`
+      );
+      runAllSites(siteFilter, options).catch((error) => {
+        console.error("[scheduler] run failed", error);
+      });
     });
-  });
+  } else {
+    console.warn(
+      "[scheduler] No schedule configuration found. Skipping scheduled runs."
+    );
+  }
 }
 
 function getArgValue(flag: string): string | undefined {
