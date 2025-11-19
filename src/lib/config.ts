@@ -1,11 +1,19 @@
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
 export interface ConfigFile {
-  schedule: ScheduleConfig;
+  schedule?: ScheduleConfig;
   output: OutputConfig;
-  sharedSearchKeywords?: string | string[];
+  sharedSearchKeywords: string[];
   sites: SiteConfig[];
+  ai?: AiConfig;
+}
+
+export interface AiConfig {
+  prompts: {
+    titleFilter: string[];
+    detailEvaluation: string[];
+  };
 }
 
 export interface ScheduleConfig {
@@ -88,7 +96,7 @@ export interface CookieConsentConfig {
   waitForSeconds?: number;
 }
 
-const DEFAULT_CONFIG = path.resolve(process.cwd(), 'config.json');
+const DEFAULT_CONFIG = path.resolve(process.cwd(), "config.json");
 
 export function loadConfig(customPath?: string): ConfigFile {
   const configPath = path.resolve(process.cwd(), customPath ?? DEFAULT_CONFIG);
@@ -96,13 +104,15 @@ export function loadConfig(customPath?: string): ConfigFile {
     throw new Error(`Config file not found at ${configPath}`);
   }
 
-  const raw = fs.readFileSync(configPath, 'utf-8');
+  const raw = fs.readFileSync(configPath, "utf-8");
   const data = JSON.parse(raw) as ConfigFile;
 
   const shared = normalizeKeywordsInput(data.sharedSearchKeywords);
   if (shared.length) {
     data.sites = data.sites.map((site) => {
-      const existing = normalizeKeywordsInput(site.search.criteria.searchKeywords);
+      const existing = normalizeKeywordsInput(
+        site.search.criteria.searchKeywords
+      );
       if (existing.length) {
         return site;
       }
@@ -112,9 +122,9 @@ export function loadConfig(customPath?: string): ConfigFile {
           ...site.search,
           criteria: {
             ...site.search.criteria,
-            searchKeywords: shared
-          }
-        }
+            searchKeywords: shared,
+          },
+        },
       };
     });
   }
@@ -130,7 +140,9 @@ export function getSiteConfig(config: ConfigFile, key: string): SiteConfig {
   return site;
 }
 
-function normalizeKeywordsInput(value: string | string[] | undefined): string[] {
+function normalizeKeywordsInput(
+  value: string | string[] | undefined
+): string[] {
   if (!value) return [];
   const arr = Array.isArray(value) ? value : [value];
   return arr.map((k) => k.trim()).filter(Boolean);
