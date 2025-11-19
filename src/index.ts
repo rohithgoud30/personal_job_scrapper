@@ -1,17 +1,25 @@
-import cron from 'node-cron';
-import readline from 'readline';
-import { loadConfig, OutputConfig, SiteConfig } from './lib/config';
-import { runKforceSite } from './sites/kforce';
-import { runRandstadSite } from './sites/randstadusa';
-import { RunOptions } from './sites/types';
+import cron from "node-cron";
+import readline from "readline";
+import { loadConfig, OutputConfig, SiteConfig } from "./lib/config";
+import { runKforceSite } from "./sites/kforce";
+import { runRandstadSite } from "./sites/randstadusa";
+import { runCorpToCorpSite } from "./sites/corptocorp";
+import { RunOptions } from "./sites/types";
 
-async function runSite(site: SiteConfig, output: OutputConfig, options: RunOptions): Promise<void> {
+async function runSite(
+  site: SiteConfig,
+  output: OutputConfig,
+  options: RunOptions
+): Promise<void> {
   switch (site.key) {
-    case 'kforce':
+    case "kforce":
       await runKforceSite(site, output, options);
       break;
-    case 'randstadusa':
+    case "randstadusa":
       await runRandstadSite(site, output, options);
+      break;
+    case "corptocorp":
+      await runCorpToCorpSite(site, output, options);
       break;
     default:
       console.warn(`No runner implemented for site key: ${site.key}`);
@@ -19,14 +27,17 @@ async function runSite(site: SiteConfig, output: OutputConfig, options: RunOptio
   }
 }
 
-async function runAllSites(siteFilter: Set<string> | undefined, options: RunOptions): Promise<void> {
+async function runAllSites(
+  siteFilter: Set<string> | undefined,
+  options: RunOptions
+): Promise<void> {
   const config = loadConfig();
   const targets = siteFilter
     ? config.sites.filter((site) => siteFilter.has(site.key))
     : config.sites;
 
   if (!targets.length) {
-    console.warn('[runner] No sites matched the provided --site filter.');
+    console.warn("[runner] No sites matched the provided --site filter.");
     return;
   }
 
@@ -38,19 +49,28 @@ async function runAllSites(siteFilter: Set<string> | undefined, options: RunOpti
 
   const durationMs = Date.now() - startTime;
   stopTimer();
-  console.log(`[runner] Completed ${targets.length} site run(s) in ${formatDuration(durationMs)}.`);
+  console.log(
+    `[runner] Completed ${targets.length} site run(s) in ${formatDuration(
+      durationMs
+    )}.`
+  );
 }
 
-function scheduleSites(siteFilter: Set<string> | undefined, options: RunOptions): void {
+function scheduleSites(
+  siteFilter: Set<string> | undefined,
+  options: RunOptions
+): void {
   const config = loadConfig();
-  const filterLabel = siteFilter ? ` for sites [${[...siteFilter].join(', ')}]` : '';
+  const filterLabel = siteFilter
+    ? ` for sites [${[...siteFilter].join(", ")}]`
+    : "";
   console.log(
     `Scheduling hourly runs${filterLabel} with cron pattern ${config.schedule.cron}`
   );
   cron.schedule(config.schedule.cron, () => {
     console.log(`[scheduler] Triggering scrape at ${new Date().toISOString()}`);
     runAllSites(siteFilter, options).catch((error) => {
-      console.error('[scheduler] run failed', error);
+      console.error("[scheduler] run failed", error);
     });
   });
 }
@@ -58,7 +78,7 @@ function scheduleSites(siteFilter: Set<string> | undefined, options: RunOptions)
 function getArgValue(flag: string): string | undefined {
   const flagWithEquals = process.argv.find((arg) => arg.startsWith(`${flag}=`));
   if (flagWithEquals) {
-    return flagWithEquals.split('=')[1];
+    return flagWithEquals.split("=")[1];
   }
 
   const flagIndex = process.argv.indexOf(flag);
@@ -70,13 +90,13 @@ function getArgValue(flag: string): string | undefined {
 }
 
 function parseSiteFilter(): Set<string> | undefined {
-  const raw = getArgValue('--site');
+  const raw = getArgValue("--site");
   if (!raw) {
     return undefined;
   }
 
   const values = raw
-    .split(',')
+    .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
 
@@ -84,21 +104,25 @@ function parseSiteFilter(): Set<string> | undefined {
 }
 
 const siteFilter = parseSiteFilter();
-const shouldSchedule = process.argv.includes('--schedule');
+const shouldSchedule = process.argv.includes("--schedule");
 const runOptions: RunOptions = {
-  skipBatchPause: process.argv.includes('--skip-batch-wait') || process.argv.includes('--fast'),
-  resumeSessionId: getArgValue('--resume-session') ?? getArgValue('--session')
+  skipBatchPause:
+    process.argv.includes("--skip-batch-wait") ||
+    process.argv.includes("--fast"),
+  resumeSessionId: getArgValue("--resume-session") ?? getArgValue("--session"),
 };
 
 if (runOptions.resumeSessionId && shouldSchedule) {
-  console.warn('[runner] Ignoring --resume-session when running on a schedule.');
+  console.warn(
+    "[runner] Ignoring --resume-session when running on a schedule."
+  );
 }
 
 if (shouldSchedule) {
   scheduleSites(siteFilter, runOptions);
 } else {
   runAllSites(siteFilter, runOptions).catch((error) => {
-    console.error('Manual run failed', error);
+    console.error("Manual run failed", error);
     process.exitCode = 1;
   });
 }
@@ -113,7 +137,7 @@ function formatDuration(ms: number): string {
   return `${seconds}s`;
 }
 
-function startElapsedTimer(label = '[runner] Elapsed'): () => void {
+function startElapsedTimer(label = "[runner] Elapsed"): () => void {
   const start = Date.now();
   const originalLog = console.log;
 

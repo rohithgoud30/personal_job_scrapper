@@ -1,38 +1,231 @@
-# Personal Job Scraper (Playwright + TypeScript)
+# Personal Job Scraper
 
-Headful Playwright automation that you can run on-demand to capture contract listings from Kforce today—and easily extend to other job boards tomorrow. Each site is driven entirely by JSON config, so adding new portals is just a matter of duplicating the site block. Results are saved per-day to `data/<host>/{MM_DD_YYYY}/new_jobs_{MM_DD_YYYY}.csv` in US Eastern time (one CSV per day).
+A powerful, AI-powered CLI tool to scrape job listings from multiple sites, filter them intelligently, and save only the best matches.
 
-## Getting Started
-1. Install dependencies and browser: `npm install && npx playwright install chromium`.
-2. Copy `.env.example` to `.env`, set `ZAI_API_KEY` (Zhipu AI / Z.AI API key). Optional knobs: `ZAI_BASE_URL` (defaults to `https://api.z.ai/api/paas/v4/`), `KEYWORD_BATCH_SIZE` (parallel keyword tabs) and `TEST_RUN_DATE=YYYY-MM-DD` if you want to backfill a previous day for testing.
-3. Customize `config.json` (selectors, keyword list, throttle timings). All secrets live directly in this file.
-4. Run once (default): `npm run start:once -- --site kforce`. The run stages roles per session, sends the combined titles to AI for pruning, then visits each approved job for a full-text AI check before writing to the daily CSV. Make sure no other Chromium window is using the site’s persistent profile (e.g., `.playwright/kforce`) before launching.
-5. Optional scheduling later: `npm run start -- --site <key> --schedule` (honors `schedule.cron` only when you add `--schedule`; manual runs remain the default). When you add more sites, pass comma-separated keys (e.g., `--site kforce,newPortal`).
+## 🚀 Quick Start
 
-## Shortcuts
-- Skip the 25–30s pauses between keyword batches when you need faster AI feedback: add `--skip-batch-wait` (use sparingly to stay polite to the host).
-- Restart just the AI portion from a saved scrape: `npm run start:once -- --site kforce --resume-session <session-id>`. The session ID matches the folder under `data/<host>/<date>/sessions/<session-id>/roles/new_roles.csv`.
+```bash
+# Clone the repository
+git clone https://github.com/rohithgoud30/personal_job_scrapper.git
+cd personal_job_scrapper
 
-## Key Behaviors
-- **Persistent profile**: `.playwright/<site>` stores cookies/login so subsequent runs reuse the session.
-- **Cookie consent**: OneTrust banner is auto-accepted on load via selectors in config.
-- **Contract-only filtering**: `jobTypeFilter` + `jobTypeFacet*` selectors ensure the Contract facet is selected before searching; each job card is double-checked for the same type.
-- **Newest-first ordering**: The search dropdown is switched to “Newest Jobs First” before scraping, and each day’s `new_jobs_{date}.csv` is rewritten so the latest records appear at the top.
-- **Per-day dedupe**: `seen.json` (per date folder) tracks stable job IDs; only unseen postings make it into the CSV.
-- **Two-stage AI filtering with retries + reasoning**:
-  1. After scraping completes, all staged titles/companies/locations/URLs are sent in one array to the Z.AI `glm-4.6` model; it removes anything not tied to the target web stacks (frontend React/Angular/Next.js/TS, React Native, backend Java/Spring Boot/Python/FastAPI/Node/Express, cloud microservices alongside those stacks).
-  2. Each remaining role is visited individually; descriptions are re-fetched if short (10s, then 30s) before scoring with `glm-4.5-Air`. The model enforces the stack match (including React Native standalone or paired with backend), allows experience phrasing from 5 up to but under 6 years (e.g., `5` / `5+` / `1-5`), and rejects anything that explicitly includes 6+ (e.g., `6`, `6+`, `5-7`, `7-10`). It still rejects Go/Golang/.NET/C#. Accepted/rejected roles include a one-line reason in the logs. Both AI calls retry up to 3 times with backoff.
-- **Timestamps**: Every row includes `scraped_at` (e.g., `1:05 PM ET`) for quick auditing.
-- **CSV columns**: `site,title,company,location,posted,url,job_id,scraped_at` (no summary/description text stored). Each site writes into `data/<host>/<date>/new_jobs_{date}.csv`.
-- **Run timer + summary**: While the scraper runs you’ll see a live elapsed timer (like a package install), and when it finishes the CLI logs the total duration.
+# Install dependencies
+npm install
+npx playwright install chromium
 
-## Config Highlights (`config.json`)
-- `schedule.cron`: optional cron expression if/when you enable scheduling with `--schedule`.
-- `output.pattern`: date/hour structure; uses Eastern time under the hood.
-- `sites[].search.criteria.searchKeywords`: full library of keyword phrases for that site. Add as many as needed per portal.
-- `sites[].search.postedTodayOnly`: skip anything not posted on the current Eastern day.
-- `sites[].search.jobTypeFilter`: accepted job-type labels (e.g., `"Contract"`).
-- `sites[].search.selectors.*`: selectors for search inputs, pagination, sort dropdown, job-type facet, listing fields, etc. Adjust here when DOM changes—no code edits required.
+# Configure environment
+cp .env.example .env
+# Edit .env and add your ZAI_API_KEY
 
-## Docs
-See `docs/architecture/kforce.md` (current implementation) for a deeper explanation of the architecture, session folders, AI scoring, and extension points. Future sites will follow the same workflow.
+# Run a scraper
+npm start -- --site=corptocorp
+```
+
+## 📋 Prerequisites
+
+- **Node.js** v18 or higher
+- **Git**
+- **Zhipu AI API Key** ([Get one here](https://open.bigmodel.cn/))
+
+## ⚙️ Configuration
+
+### 1. Environment Variables
+
+Copy `.env.example` to `.env`:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your settings:
+
+```env
+AI_API_KEY=your-api-key-here
+AI_BASE_URL=https://api.openai.com/v1/
+AI_MODEL=gpt-3.5-turbo
+AI_TITLE_FILTER_MODEL=gpt-3.5-turbo
+AI_DETAIL_EVAL_MODEL=gpt-4
+KEYWORD_BATCH_SIZE=5
+TEST_RUN_DATE=
+```
+
+| Variable                | Description                                           | Required | Example Values                                                                         |
+| ----------------------- | ----------------------------------------------------- | -------- | -------------------------------------------------------------------------------------- |
+| `AI_API_KEY`            | API key for your AI provider                          | ✅ Yes   | OpenAI key, Zhipu AI key, etc.                                                         |
+| `AI_BASE_URL`           | API endpoint URL                                      | ✅ Yes   | `https://api.openai.com/v1/` (OpenAI)<br>`https://api.z.ai/api/coding/paas/v4` (Zhipu) |
+| `AI_TITLE_FILTER_MODEL` | Model for Stage 1 (title filtering)                   | ✅ Yes   | `gpt-3.5-turbo`, `glm-4.6`                                                             |
+| `AI_DETAIL_EVAL_MODEL`  | Model for Stage 2 (detail evaluation)                 | ✅ Yes   | `gpt-4`, `glm-4.5-Air`                                                                 |
+| `KEYWORD_BATCH_SIZE`    | Number of parallel keyword searches                   | ❌ No    | Default: `5`                                                                           |
+| `TEST_RUN_DATE`         | Backfill date (YYYY-MM-DD, leave empty for live runs) | ❌ No    | `2025-11-14` or empty                                                                  |
+
+#### 🔌 Supported AI Providers
+
+This tool works with **any OpenAI-compatible API**, including:
+
+- **OpenAI** (GPT-3.5, GPT-4, etc.)
+
+  ```env
+  AI_BASE_URL=https://api.openai.com/v1/
+  AI_TITLE_FILTER_MODEL=gpt-3.5-turbo
+  AI_DETAIL_EVAL_MODEL=gpt-4
+  ```
+
+- **Zhipu AI** (GLM models) - Current default
+
+  ```env
+  AI_BASE_URL=https://api.z.ai/api/coding/paas/v4
+  AI_TITLE_FILTER_MODEL=glm-4.6
+  AI_DETAIL_EVAL_MODEL=glm-4.5-Air
+  ```
+
+- **Azure OpenAI**, **Anthropic Claude** (via compatibility layers), or any other OpenAI-compatible endpoint
+
+### 2. Site Configuration
+
+All site-specific settings are in `config.json`:
+
+- Search keywords
+- CSS selectors
+- Crawl delays
+- AI filtering rules
+
+## 🎯 Usage
+
+### Run Individual Sites
+
+```bash
+# CorpToCorp (C2C jobs, OPT/STEM OPT friendly)
+npm start -- --site=corptocorp
+
+# Kforce (Contract roles)
+npm start -- --site=kforce
+
+# Randstad USA (Contract jobs)
+npm start -- --site=randstadusa
+```
+
+### Run All Sites
+
+```bash
+npm start
+```
+
+### Advanced Options
+
+```bash
+# Re-run AI evaluation on existing session
+npm start -- --site=corptocorp --session=session-2025-11-19T03-23-05-227Z
+
+# Skip delays between keyword batches (use sparingly)
+npm start -- --site=corptocorp --fast
+
+# Backfill a specific date
+TEST_RUN_DATE=2025-11-14 npm start -- --site=kforce
+```
+
+## 📊 Supported Sites
+
+| Site           | Speed          | Visa Filter  | Notes                                    |
+| -------------- | -------------- | ------------ | ---------------------------------------- |
+| **CorpToCorp** | ⚡⚡⚡ Fastest | OPT/STEM OPT | C2C listings, auto-sorts by date         |
+| **Kforce**     | ⚡ Slower      | Standard     | Contract roles, 30s crawl-delay required |
+| **Randstad**   | ⚡⚡ Fast      | Standard     | Contract/Temp jobs                       |
+
+## 🧠 How It Works
+
+```
+┌─────────────┐
+│  Scraping   │ → Launch browser, search keywords, extract listings
+└─────────────┘
+       ↓
+┌─────────────┐
+│ AI Filter 1 │ → Remove irrelevant titles (Data/BI/Legacy/QA)
+└─────────────┘
+       ↓
+┌─────────────┐
+│ AI Filter 2 │ → Evaluate full job descriptions
+└─────────────┘   ✓ Tech stack match (React/Node/Java/Python)
+       ↓          ✓ Experience: 5 to <6 years
+┌─────────────┐   ✓ Visa requirements (OPT/STEM for CorpToCorp)
+│   Output    │
+└─────────────┘   → data/<site>/<date>/new_jobs_<date>.csv
+```
+
+### AI Filtering Rules
+
+**Stage 1: Title Filter** (Model: `glm-4.6`)
+
+- Removes: Data Engineer, BI/Analytics, QA/SDET, .NET, C#, Go, Legacy Tech
+- Keeps: Modern web/full-stack roles
+
+**Stage 2: Detail Evaluation** (Model: `glm-4.5-Air`)
+
+- ✅ **Tech Stack**: React, Angular, Next.js, Node.js, Java/Spring Boot, Python/FastAPI
+- ✅ **Experience**: 5 to <6 years (e.g., "5 years", "1-5 years", "5+")
+- ✅ **Visa** (CorpToCorp): OPT, STEM OPT, or no restrictions
+- ❌ **Rejects**: 6+ years, H1B/USC-only, non-web stacks
+
+## 📂 Output Structure
+
+```
+data/
+└── corptocorp.org/
+    └── 11_18_2025/
+        ├── new_jobs_11_18_2025.csv          # Final approved jobs
+        ├── seen.json                         # Deduplication store
+        └── sessions/
+            └── session-2025-11-19T.../
+                └── roles/
+                    └── new_roles.csv         # Staged jobs (pre-AI)
+```
+
+### CSV Format
+
+```csv
+site,title,company,location,posted,url,job_id,scraped_at
+corptocorp,Java Full Stack Engineer,CorpToCorp,,2025-11-18 19:12:00,https://...,10:23 PM ET
+```
+
+## 📖 Documentation
+
+Detailed architecture and logic for each scraper:
+
+- 📘 [CorpToCorp Architecture](docs/architecture/corptocorp.md)
+- 📗 [Kforce Architecture](docs/architecture/kforce.md)
+- 📙 [Randstad Architecture](docs/architecture/randstadusa.md)
+
+## 🔧 Troubleshooting
+
+### "No sites matched the provided --site filter"
+
+- Check that the site key is correct: `corptocorp`, `kforce`, or `randstadusa`
+- Ensure `config.json` is valid JSON
+
+### "ProcessSingleton" error
+
+- Close any existing browser windows using the same profile
+- Wait 30 seconds and try again
+
+### No jobs found
+
+- Check `config.json` → `search.criteria.searchKeywords`
+- Verify `postedTodayOnly` setting (set to `false` for testing)
+- Check if site structure changed (inspect selectors)
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/new-site`)
+3. Commit your changes (`git commit -m 'feat: add new site scraper'`)
+4. Push to the branch (`git push origin feature/new-site`)
+5. Open a Pull Request
+
+## 📄 License
+
+MIT License - see LICENSE file for details
+
+## 🙏 Acknowledgments
+
+- [Playwright](https://playwright.dev/) for browser automation
+- [Zhipu AI](https://open.bigmodel.cn/) for intelligent job filtering
+- [TypeScript](https://www.typescriptlang.org/) for type safety
