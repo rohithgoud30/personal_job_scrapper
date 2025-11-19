@@ -205,6 +205,50 @@
         "textMatches": ["Accept All Cookies", "Accept"],
         "waitForSeconds": 2
       }
+    },
+    {
+      "key": "corptocorp",
+      "host": "corptocorp.org",
+      "userDataDir": ".playwright/corptocorp",
+      "login": {
+        "required": false,
+        "url": "",
+        "email": "",
+        "password": "",
+        "selectors": {
+          "openLogin": "",
+          "email": "",
+          "password": "",
+          "submit": ""
+        }
+      },
+      "search": {
+        "url": "https://corptocorp.org/c2c-jobs/",
+        "criteria": {
+          "searchKeywords": []
+        },
+        "postedTodayOnly": true,
+        "selectors": {
+          "keywords": "input[type='search']",
+          "submit": "",
+          "card": "table#ipt-posts-table tbody tr",
+          "title": "td:nth-child(1) a",
+          "posted": "td:nth-child(3)",
+          "next": "#ipt-posts-table_next"
+        }
+      },
+      "run": {
+        "maxPages": 5,
+        "throttleSeconds": 5,
+        "pageDelaySeconds": 5,
+        "keywordDelaySeconds": 1
+      },
+      "disallowPatterns": [],
+      "cookieConsent": {
+        "buttonSelectors": ["button:has-text('Okay')", "button:text('Okay')"],
+        "textMatches": ["Okay"],
+        "waitForSeconds": 2
+      }
     }
   ]
 }
