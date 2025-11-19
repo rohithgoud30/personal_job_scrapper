@@ -176,7 +176,12 @@ export async function runCorpToCorpSite(
       } roles. ${filtered.length} remain for detail evaluation.`
     );
 
-    const acceptedRows = await evaluateDetailedJobs(context, filtered, seen);
+    const acceptedRows = await evaluateDetailedJobs(
+      context,
+      filtered,
+      seen,
+      site
+    );
     if (!acceptedRows.length) {
       console.log("[corptocorp] No jobs approved after detail evaluation.");
       return;
@@ -441,7 +446,8 @@ async function extractJobRow(
 async function evaluateDetailedJobs(
   context: BrowserContext,
   roles: SessionRole[],
-  seen: Set<string>
+  seen: Set<string>,
+  site: SiteConfig
 ): Promise<JobRow[]> {
   const accepted: JobRow[] = [];
   for (let i = 0; i < roles.length; i++) {
@@ -460,13 +466,16 @@ async function evaluateDetailedJobs(
         }" – description length ${description.length} chars.`
       );
 
-      const detailResult = await evaluateJobDetail({
-        title: role.title,
-        company: role.company,
-        location: role.location,
-        url: role.url,
-        description,
-      });
+      const detailResult = await evaluateJobDetail(
+        {
+          title: role.title,
+          company: role.company,
+          location: role.location,
+          url: role.url,
+          description,
+        },
+        site
+      );
 
       if (!detailResult.accepted) {
         console.log(

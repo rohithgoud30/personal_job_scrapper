@@ -186,14 +186,6 @@ site,title,company,location,posted,url,job_id,scraped_at
 corptocorp,Java Full Stack Engineer,CorpToCorp,,2025-11-18 19:12:00,https://...,10:23 PM ET
 ```
 
-## 📖 Documentation
-
-Detailed architecture and logic for each scraper:
-
-- 📘 [CorpToCorp Architecture](docs/architecture/corptocorp.md)
-- 📗 [Kforce Architecture](docs/architecture/kforce.md)
-- 📙 [Randstad Architecture](docs/architecture/randstadusa.md)
-
 ## 🔧 Troubleshooting
 
 ### "No sites matched the provided --site filter"

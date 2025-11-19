@@ -34,6 +34,7 @@ export interface SiteConfig {
   run: RunConfig;
   disallowPatterns: string[];
   cookieConsent?: CookieConsentConfig;
+  ai?: AiConfig;
 }
 
 export interface LoginConfig {
