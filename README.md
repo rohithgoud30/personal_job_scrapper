@@ -1,93 +1,204 @@
 # Personal Job Scraper
 
-A powerful, customizable CLI tool to scrape job listings from various sites, filter them using AI, and save the best matches.
+A powerful, AI-powered CLI tool to scrape job listings from multiple sites, filter them intelligently, and save only the best matches.
 
-## 🚀 Getting Started
-
-### 1. Prerequisites
-
-- **Node.js** (v18 or higher)
-- **Git**
-
-### 2. Installation
-
-Clone the repository and install dependencies:
+## 🚀 Quick Start
 
 ```bash
+# Clone the repository
 git clone https://github.com/rohithgoud30/personal_job_scrapper.git
 cd personal_job_scrapper
+
+# Install dependencies
 npm install
 npx playwright install chromium
-```
 
-### 3. Configuration
+# Configure environment
+cp .env.example .env
+# Edit .env and add your ZAI_API_KEY
 
-1.  Copy the example environment file:
-    ```bash
-    cp .env.example .env
-    ```
-2.  Edit `.env` and add your **Zhipu AI API Key** (required for AI filtering):
-    ```env
-    ZAI_API_KEY=your-z-ai-key
-    ZAI_BASE_URL=https://api.z.ai/api/coding/paas/v4
-    KEYWORD_BATCH_SIZE=5
-    TEST_RUN_DATE=2025-11-14
-    ```
-    - `ZAI_API_KEY`: Your Zhipu AI API key (required).
-    - `ZAI_BASE_URL`: API endpoint (optional, defaults shown).
-    - `KEYWORD_BATCH_SIZE`: Number of parallel keyword searches (optional, default 5).
-    - `TEST_RUN_DATE`: Backfill date in YYYY-MM-DD format (optional, leave empty for live runs).
-
-## 🏃‍♂️ Running the Scrapers
-
-You can run scrapers for individual sites using the following commands.
-
-### **CorpToCorp** (`corptocorp.org`)
-
-Scrapes C2C job listings, handles popups, sorts by date, and applies strict visa filtering (Accepts OPT/STEM OPT, Rejects H1B/USC-only).
-
-```bash
+# Run a scraper
 npm start -- --site=corptocorp
 ```
 
-### **Kforce** (`kforce.com`)
+## 📋 Prerequisites
 
-Scrapes contract roles, filters for "Contract" type, and sorts by newest.
+- **Node.js** v18 or higher
+- **Git**
+- **Zhipu AI API Key** ([Get one here](https://open.bigmodel.cn/))
+
+## ⚙️ Configuration
+
+### 1. Environment Variables
+
+Copy `.env.example` to `.env`:
 
 ```bash
-npm start -- --site=kforce
+cp .env.example .env
 ```
 
-### **Randstad** (`randstadusa.com`)
+Edit `.env` with your settings:
 
-Scrapes contract jobs from Randstad.
+```env
+ZAI_API_KEY=your-z-ai-key
+ZAI_BASE_URL=https://api.z.ai/api/coding/paas/v4
+KEYWORD_BATCH_SIZE=5
+TEST_RUN_DATE=
+```
+
+| Variable             | Description                                                  | Required           |
+| -------------------- | ------------------------------------------------------------ | ------------------ |
+| `ZAI_API_KEY`        | Your Zhipu AI API key for job filtering                      | ✅ Yes             |
+| `ZAI_BASE_URL`       | API endpoint (default shown above)                           | ❌ No              |
+| `KEYWORD_BATCH_SIZE` | Number of parallel keyword searches                          | ❌ No (default: 5) |
+| `TEST_RUN_DATE`      | Backfill date (YYYY-MM-DD format, leave empty for live runs) | ❌ No              |
+
+### 2. Site Configuration
+
+All site-specific settings are in `config.json`:
+
+- Search keywords
+- CSS selectors
+- Crawl delays
+- AI filtering rules
+
+## 🎯 Usage
+
+### Run Individual Sites
 
 ```bash
+# CorpToCorp (C2C jobs, OPT/STEM OPT friendly)
+npm start -- --site=corptocorp
+
+# Kforce (Contract roles)
+npm start -- --site=kforce
+
+# Randstad USA (Contract jobs)
 npm start -- --site=randstadusa
 ```
 
-### **Run All Sites**
-
-To run all configured sites sequentially:
+### Run All Sites
 
 ```bash
 npm start
 ```
 
+### Advanced Options
+
+```bash
+# Re-run AI evaluation on existing session
+npm start -- --site=corptocorp --session=session-2025-11-19T03-23-05-227Z
+
+# Skip delays between keyword batches (use sparingly)
+npm start -- --site=corptocorp --fast
+
+# Backfill a specific date
+TEST_RUN_DATE=2025-11-14 npm start -- --site=kforce
+```
+
+## 📊 Supported Sites
+
+| Site           | Speed          | Visa Filter  | Notes                                    |
+| -------------- | -------------- | ------------ | ---------------------------------------- |
+| **CorpToCorp** | ⚡⚡⚡ Fastest | OPT/STEM OPT | C2C listings, auto-sorts by date         |
+| **Kforce**     | ⚡ Slower      | Standard     | Contract roles, 30s crawl-delay required |
+| **Randstad**   | ⚡⚡ Fast      | Standard     | Contract/Temp jobs                       |
+
 ## 🧠 How It Works
 
-1.  **Scraping**: The tool launches a browser (Playwright), navigates to the site, searches for keywords defined in `config.json`, and extracts job listings.
-2.  **AI Filtering (Stage 1)**: It uses an AI model to filter out irrelevant job titles (e.g., Data Engineer, .NET, Legacy Tech).
-3.  **AI Evaluation (Stage 2)**: It visits each remaining job page, extracts the full description, and uses a more powerful AI model to evaluate:
-    - **Tech Stack**: Modern Web (React, Node, Python, Java).
-    - **Experience**: 5 to <6 years.
-    - **Visa**: Strict checks (e.g., for CorpToCorp, it ensures OPT/STEM OPT compatibility).
-4.  **Output**: Approved jobs are saved to `data/<site>/<date>/new_jobs_<date>.csv`.
+```
+┌─────────────┐
+│  Scraping   │ → Launch browser, search keywords, extract listings
+└─────────────┘
+       ↓
+┌─────────────┐
+│ AI Filter 1 │ → Remove irrelevant titles (Data/BI/Legacy/QA)
+└─────────────┘
+       ↓
+┌─────────────┐
+│ AI Filter 2 │ → Evaluate full job descriptions
+└─────────────┘   ✓ Tech stack match (React/Node/Java/Python)
+       ↓          ✓ Experience: 5 to <6 years
+┌─────────────┐   ✓ Visa requirements (OPT/STEM for CorpToCorp)
+│   Output    │
+└─────────────┘   → data/<site>/<date>/new_jobs_<date>.csv
+```
 
-## 📂 Documentation
+### AI Filtering Rules
 
-For detailed architecture and logic of each scraper, see the documentation:
+**Stage 1: Title Filter** (Model: `glm-4.6`)
 
-- [**CorpToCorp Architecture**](docs/architecture/corptocorp.md)
-- [**Kforce Architecture**](docs/architecture/kforce.md)
-- [**Randstad Architecture**](docs/architecture/randstadusa.md)
+- Removes: Data Engineer, BI/Analytics, QA/SDET, .NET, C#, Go, Legacy Tech
+- Keeps: Modern web/full-stack roles
+
+**Stage 2: Detail Evaluation** (Model: `glm-4.5-Air`)
+
+- ✅ **Tech Stack**: React, Angular, Next.js, Node.js, Java/Spring Boot, Python/FastAPI
+- ✅ **Experience**: 5 to <6 years (e.g., "5 years", "1-5 years", "5+")
+- ✅ **Visa** (CorpToCorp): OPT, STEM OPT, or no restrictions
+- ❌ **Rejects**: 6+ years, H1B/USC-only, non-web stacks
+
+## 📂 Output Structure
+
+```
+data/
+└── corptocorp.org/
+    └── 11_18_2025/
+        ├── new_jobs_11_18_2025.csv          # Final approved jobs
+        ├── seen.json                         # Deduplication store
+        └── sessions/
+            └── session-2025-11-19T.../
+                └── roles/
+                    └── new_roles.csv         # Staged jobs (pre-AI)
+```
+
+### CSV Format
+
+```csv
+site,title,company,location,posted,url,job_id,scraped_at
+corptocorp,Java Full Stack Engineer,CorpToCorp,,2025-11-18 19:12:00,https://...,10:23 PM ET
+```
+
+## 📖 Documentation
+
+Detailed architecture and logic for each scraper:
+
+- 📘 [CorpToCorp Architecture](docs/architecture/corptocorp.md)
+- 📗 [Kforce Architecture](docs/architecture/kforce.md)
+- 📙 [Randstad Architecture](docs/architecture/randstadusa.md)
+
+## 🔧 Troubleshooting
+
+### "No sites matched the provided --site filter"
+
+- Check that the site key is correct: `corptocorp`, `kforce`, or `randstadusa`
+- Ensure `config.json` is valid JSON
+
+### "ProcessSingleton" error
+
+- Close any existing browser windows using the same profile
+- Wait 30 seconds and try again
+
+### No jobs found
+
+- Check `config.json` → `search.criteria.searchKeywords`
+- Verify `postedTodayOnly` setting (set to `false` for testing)
+- Check if site structure changed (inspect selectors)
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/new-site`)
+3. Commit your changes (`git commit -m 'feat: add new site scraper'`)
+4. Push to the branch (`git push origin feature/new-site`)
+5. Open a Pull Request
+
+## 📄 License
+
+MIT License - see LICENSE file for details
+
+## 🙏 Acknowledgments
+
+- [Playwright](https://playwright.dev/) for browser automation
+- [Zhipu AI](https://open.bigmodel.cn/) for intelligent job filtering
+- [TypeScript](https://www.typescriptlang.org/) for type safety
