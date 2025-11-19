@@ -43,17 +43,20 @@ Edit `.env` with your settings:
 AI_API_KEY=your-api-key-here
 AI_BASE_URL=https://api.openai.com/v1/
 AI_MODEL=gpt-3.5-turbo
+AI_TITLE_FILTER_MODEL=gpt-3.5-turbo
+AI_DETAIL_EVAL_MODEL=gpt-4
 KEYWORD_BATCH_SIZE=5
 TEST_RUN_DATE=
 ```
 
-| Variable             | Description                                           | Required | Example Values                                                                         |
-| -------------------- | ----------------------------------------------------- | -------- | -------------------------------------------------------------------------------------- |
-| `AI_API_KEY`         | API key for your AI provider                          | ✅ Yes   | OpenAI key, Zhipu AI key, etc.                                                         |
-| `AI_BASE_URL`        | API endpoint URL                                      | ✅ Yes   | `https://api.openai.com/v1/` (OpenAI)<br>`https://api.z.ai/api/coding/paas/v4` (Zhipu) |
-| `AI_MODEL`           | Model name to use                                     | ✅ Yes   | `gpt-3.5-turbo`, `gpt-4`, `glm-4.6`, etc.                                              |
-| `KEYWORD_BATCH_SIZE` | Number of parallel keyword searches                   | ❌ No    | Default: `5`                                                                           |
-| `TEST_RUN_DATE`      | Backfill date (YYYY-MM-DD, leave empty for live runs) | ❌ No    | `2025-11-14` or empty                                                                  |
+| Variable                | Description                                           | Required | Example Values                                                                         |
+| ----------------------- | ----------------------------------------------------- | -------- | -------------------------------------------------------------------------------------- |
+| `AI_API_KEY`            | API key for your AI provider                          | ✅ Yes   | OpenAI key, Zhipu AI key, etc.                                                         |
+| `AI_BASE_URL`           | API endpoint URL                                      | ✅ Yes   | `https://api.openai.com/v1/` (OpenAI)<br>`https://api.z.ai/api/coding/paas/v4` (Zhipu) |
+| `AI_TITLE_FILTER_MODEL` | Model for Stage 1 (title filtering)                   | ✅ Yes   | `gpt-3.5-turbo`, `glm-4.6`                                                             |
+| `AI_DETAIL_EVAL_MODEL`  | Model for Stage 2 (detail evaluation)                 | ✅ Yes   | `gpt-4`, `glm-4.5-Air`                                                                 |
+| `KEYWORD_BATCH_SIZE`    | Number of parallel keyword searches                   | ❌ No    | Default: `5`                                                                           |
+| `TEST_RUN_DATE`         | Backfill date (YYYY-MM-DD, leave empty for live runs) | ❌ No    | `2025-11-14` or empty                                                                  |
 
 #### 🔌 Supported AI Providers
 
@@ -63,14 +66,16 @@ This tool works with **any OpenAI-compatible API**, including:
 
   ```env
   AI_BASE_URL=https://api.openai.com/v1/
-  AI_MODEL=gpt-4
+  AI_TITLE_FILTER_MODEL=gpt-3.5-turbo
+  AI_DETAIL_EVAL_MODEL=gpt-4
   ```
 
-- **Zhipu AI** (GLM models)
+- **Zhipu AI** (GLM models) - Current default
 
   ```env
   AI_BASE_URL=https://api.z.ai/api/coding/paas/v4
-  AI_MODEL=glm-4.6
+  AI_TITLE_FILTER_MODEL=glm-4.6
+  AI_DETAIL_EVAL_MODEL=glm-4.5-Air
   ```
 
 - **Azure OpenAI**, **Anthropic Claude** (via compatibility layers), or any other OpenAI-compatible endpoint

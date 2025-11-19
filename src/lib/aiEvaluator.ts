@@ -62,7 +62,7 @@ export async function findIrrelevantJobIds(
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const completion = await client.chat.completions.create({
-        model: env.aiModel || "gpt-3.5-turbo",
+        model: env.aiTitleFilterModel || "gpt-3.5-turbo",
         temperature: 0,
         response_format: { type: "json_object" },
         messages: [
@@ -126,7 +126,7 @@ export async function evaluateJobDetail(
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const completion = await client.chat.completions.create({
-        model: env.aiModel || "gpt-3.5-turbo",
+        model: env.aiDetailEvalModel || "gpt-4",
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: systemPrompt },

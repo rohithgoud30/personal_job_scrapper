@@ -5,12 +5,15 @@ dotenv.config();
 export const env = {
   aiApiKey: process.env.AI_API_KEY ?? "",
   aiBaseUrl: process.env.AI_BASE_URL ?? "https://api.openai.com/v1/",
-  aiModel: process.env.AI_MODEL ?? "gpt-3.5-turbo",
+  aiTitleFilterModel: process.env.AI_TITLE_FILTER_MODEL ?? "gpt-3.5-turbo",
+  aiDetailEvalModel: process.env.AI_DETAIL_EVAL_MODEL ?? "gpt-4",
   keywordBatchSize: Number(process.env.KEYWORD_BATCH_SIZE ?? "5") || 5,
   runDateOverride: (process.env.TEST_RUN_DATE ?? "").trim(),
 };
 
-export function requireEnv(name: "aiApiKey" | "aiBaseUrl" | "aiModel"): string {
+export function requireEnv(
+  name: "aiApiKey" | "aiBaseUrl" | "aiTitleFilterModel" | "aiDetailEvalModel"
+): string {
   const value = env[name];
   if (!value) {
     throw new Error(
