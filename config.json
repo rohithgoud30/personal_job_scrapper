@@ -121,7 +121,7 @@
         "maxPages": 2,
         "throttleSeconds": 8,
         "pageDelaySeconds": 30,
-        "keywordDelaySeconds": 45
+        "keywordDelaySeconds": 30
       },
       "disallowPatterns": [
         "apply-online",
@@ -182,9 +182,9 @@
       },
       "run": {
         "maxPages": 2,
-        "throttleSeconds": 8,
-        "pageDelaySeconds": 20,
-        "keywordDelaySeconds": 30
+        "throttleSeconds": 5,
+        "pageDelaySeconds": 8,
+        "keywordDelaySeconds": 10
       },
       "disallowPatterns": [
         "/apply/",
@@ -192,7 +192,10 @@
         "/search-result/",
         "/subscriptions/",
         "/rna/",
-        "/*/apply/"
+        "/node/",
+        "search=",
+        "/jobs/mvp/",
+        "/profile-"
       ],
       "cookieConsent": {
         "buttonSelectors": [
