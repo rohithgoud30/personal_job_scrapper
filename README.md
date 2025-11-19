@@ -1,38 +1,87 @@
-# Personal Job Scraper (Playwright + TypeScript)
+# Personal Job Scraper
 
-Headful Playwright automation that you can run on-demand to capture contract listings from Kforce today—and easily extend to other job boards tomorrow. Each site is driven entirely by JSON config, so adding new portals is just a matter of duplicating the site block. Results are saved per-day to `data/<host>/{MM_DD_YYYY}/new_jobs_{MM_DD_YYYY}.csv` in US Eastern time (one CSV per day).
+A powerful, customizable CLI tool to scrape job listings from various sites, filter them using AI, and save the best matches.
 
-## Getting Started
-1. Install dependencies and browser: `npm install && npx playwright install chromium`.
-2. Copy `.env.example` to `.env`, set `ZAI_API_KEY` (Zhipu AI / Z.AI API key). Optional knobs: `ZAI_BASE_URL` (defaults to `https://api.z.ai/api/paas/v4/`), `KEYWORD_BATCH_SIZE` (parallel keyword tabs) and `TEST_RUN_DATE=YYYY-MM-DD` if you want to backfill a previous day for testing.
-3. Customize `config.json` (selectors, keyword list, throttle timings). All secrets live directly in this file.
-4. Run once (default): `npm run start:once -- --site kforce`. The run stages roles per session, sends the combined titles to AI for pruning, then visits each approved job for a full-text AI check before writing to the daily CSV. Make sure no other Chromium window is using the site’s persistent profile (e.g., `.playwright/kforce`) before launching.
-5. Optional scheduling later: `npm run start -- --site <key> --schedule` (honors `schedule.cron` only when you add `--schedule`; manual runs remain the default). When you add more sites, pass comma-separated keys (e.g., `--site kforce,newPortal`).
+## 🚀 Getting Started
 
-## Shortcuts
-- Skip the 25–30s pauses between keyword batches when you need faster AI feedback: add `--skip-batch-wait` (use sparingly to stay polite to the host).
-- Restart just the AI portion from a saved scrape: `npm run start:once -- --site kforce --resume-session <session-id>`. The session ID matches the folder under `data/<host>/<date>/sessions/<session-id>/roles/new_roles.csv`.
+### 1. Prerequisites
 
-## Key Behaviors
-- **Persistent profile**: `.playwright/<site>` stores cookies/login so subsequent runs reuse the session.
-- **Cookie consent**: OneTrust banner is auto-accepted on load via selectors in config.
-- **Contract-only filtering**: `jobTypeFilter` + `jobTypeFacet*` selectors ensure the Contract facet is selected before searching; each job card is double-checked for the same type.
-- **Newest-first ordering**: The search dropdown is switched to “Newest Jobs First” before scraping, and each day’s `new_jobs_{date}.csv` is rewritten so the latest records appear at the top.
-- **Per-day dedupe**: `seen.json` (per date folder) tracks stable job IDs; only unseen postings make it into the CSV.
-- **Two-stage AI filtering with retries + reasoning**:
-  1. After scraping completes, all staged titles/companies/locations/URLs are sent in one array to the Z.AI `glm-4.6` model; it removes anything not tied to the target web stacks (frontend React/Angular/Next.js/TS, React Native, backend Java/Spring Boot/Python/FastAPI/Node/Express, cloud microservices alongside those stacks).
-  2. Each remaining role is visited individually; descriptions are re-fetched if short (10s, then 30s) before scoring with `glm-4.5-Air`. The model enforces the stack match (including React Native standalone or paired with backend), allows experience phrasing from 5 up to but under 6 years (e.g., `5` / `5+` / `1-5`), and rejects anything that explicitly includes 6+ (e.g., `6`, `6+`, `5-7`, `7-10`). It still rejects Go/Golang/.NET/C#. Accepted/rejected roles include a one-line reason in the logs. Both AI calls retry up to 3 times with backoff.
-- **Timestamps**: Every row includes `scraped_at` (e.g., `1:05 PM ET`) for quick auditing.
-- **CSV columns**: `site,title,company,location,posted,url,job_id,scraped_at` (no summary/description text stored). Each site writes into `data/<host>/<date>/new_jobs_{date}.csv`.
-- **Run timer + summary**: While the scraper runs you’ll see a live elapsed timer (like a package install), and when it finishes the CLI logs the total duration.
+- **Node.js** (v18 or higher)
+- **Git**
 
-## Config Highlights (`config.json`)
-- `schedule.cron`: optional cron expression if/when you enable scheduling with `--schedule`.
-- `output.pattern`: date/hour structure; uses Eastern time under the hood.
-- `sites[].search.criteria.searchKeywords`: full library of keyword phrases for that site. Add as many as needed per portal.
-- `sites[].search.postedTodayOnly`: skip anything not posted on the current Eastern day.
-- `sites[].search.jobTypeFilter`: accepted job-type labels (e.g., `"Contract"`).
-- `sites[].search.selectors.*`: selectors for search inputs, pagination, sort dropdown, job-type facet, listing fields, etc. Adjust here when DOM changes—no code edits required.
+### 2. Installation
 
-## Docs
-See `docs/architecture/kforce.md` (current implementation) for a deeper explanation of the architecture, session folders, AI scoring, and extension points. Future sites will follow the same workflow.
+Clone the repository and install dependencies:
+
+```bash
+git clone https://github.com/rohithgoud30/personal_job_scrapper.git
+cd personal_job_scrapper
+npm install
+npx playwright install chromium
+```
+
+### 3. Configuration
+
+1.  Copy the example environment file:
+    ```bash
+    cp .env.example .env
+    ```
+2.  Edit `.env` and add your **Zhipu AI API Key** (required for AI filtering):
+    ```env
+    zAiApiKey=your_api_key_here
+    ```
+    _(Optional)_ Adjust `KEYWORD_BATCH_SIZE` to control how many tabs open in parallel.
+
+## 🏃‍♂️ Running the Scrapers
+
+You can run scrapers for individual sites using the following commands.
+
+### **CorpToCorp** (`corptocorp.org`)
+
+Scrapes C2C job listings, handles popups, sorts by date, and applies strict visa filtering (Accepts OPT/STEM OPT, Rejects H1B/USC-only).
+
+```bash
+npm start -- --site=corptocorp
+```
+
+### **Kforce** (`kforce.com`)
+
+Scrapes contract roles, filters for "Contract" type, and sorts by newest.
+
+```bash
+npm start -- --site=kforce
+```
+
+### **Randstad** (`randstadusa.com`)
+
+Scrapes contract jobs from Randstad.
+
+```bash
+npm start -- --site=randstadusa
+```
+
+### **Run All Sites**
+
+To run all configured sites sequentially:
+
+```bash
+npm start
+```
+
+## 🧠 How It Works
+
+1.  **Scraping**: The tool launches a browser (Playwright), navigates to the site, searches for keywords defined in `config.json`, and extracts job listings.
+2.  **AI Filtering (Stage 1)**: It uses an AI model to filter out irrelevant job titles (e.g., Data Engineer, .NET, Legacy Tech).
+3.  **AI Evaluation (Stage 2)**: It visits each remaining job page, extracts the full description, and uses a more powerful AI model to evaluate:
+    - **Tech Stack**: Modern Web (React, Node, Python, Java).
+    - **Experience**: 5 to <6 years.
+    - **Visa**: Strict checks (e.g., for CorpToCorp, it ensures OPT/STEM OPT compatibility).
+4.  **Output**: Approved jobs are saved to `data/<site>/<date>/new_jobs_<date>.csv`.
+
+## 📂 Documentation
+
+For detailed architecture and logic of each scraper, see the documentation:
+
+- [**CorpToCorp Architecture**](docs/architecture/corptocorp.md)
+- [**Kforce Architecture**](docs/architecture/kforce.md)
+- [**Randstad Architecture**](docs/architecture/randstadusa.md)
