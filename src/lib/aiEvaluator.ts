@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { env, requireEnv } from "./env";
-import { loadConfig } from "./config";
+import { loadConfig, SiteConfig } from "./config";
 
 export interface TitleEntry {
   title: string;
@@ -115,10 +115,15 @@ export async function findIrrelevantJobIds(
 }
 
 export async function evaluateJobDetail(
-  payload: DetailPayload
+  payload: DetailPayload,
+  siteConfig?: SiteConfig
 ): Promise<{ accepted: boolean; reasoning: string }> {
   const config = await loadConfig();
-  const prompts = config.ai?.prompts?.detailEvaluation;
+  // Prioritize site-specific prompts if available, otherwise fall back to global
+  const prompts =
+    siteConfig?.ai?.prompts?.detailEvaluation ||
+    config.ai?.prompts?.detailEvaluation;
+
   const systemPrompt = Array.isArray(prompts)
     ? prompts.join(" ")
     : [
