@@ -40,18 +40,40 @@ cp .env.example .env
 Edit `.env` with your settings:
 
 ```env
-ZAI_API_KEY=your-z-ai-key
-ZAI_BASE_URL=https://api.z.ai/api/coding/paas/v4
+AI_API_KEY=your-api-key-here
+AI_BASE_URL=https://api.openai.com/v1/
+AI_MODEL=gpt-3.5-turbo
 KEYWORD_BATCH_SIZE=5
 TEST_RUN_DATE=
 ```
 
-| Variable             | Description                                                  | Required           |
-| -------------------- | ------------------------------------------------------------ | ------------------ |
-| `ZAI_API_KEY`        | Your Zhipu AI API key for job filtering                      | ✅ Yes             |
-| `ZAI_BASE_URL`       | API endpoint (default shown above)                           | ❌ No              |
-| `KEYWORD_BATCH_SIZE` | Number of parallel keyword searches                          | ❌ No (default: 5) |
-| `TEST_RUN_DATE`      | Backfill date (YYYY-MM-DD format, leave empty for live runs) | ❌ No              |
+| Variable             | Description                                           | Required | Example Values                                                                         |
+| -------------------- | ----------------------------------------------------- | -------- | -------------------------------------------------------------------------------------- |
+| `AI_API_KEY`         | API key for your AI provider                          | ✅ Yes   | OpenAI key, Zhipu AI key, etc.                                                         |
+| `AI_BASE_URL`        | API endpoint URL                                      | ✅ Yes   | `https://api.openai.com/v1/` (OpenAI)<br>`https://api.z.ai/api/coding/paas/v4` (Zhipu) |
+| `AI_MODEL`           | Model name to use                                     | ✅ Yes   | `gpt-3.5-turbo`, `gpt-4`, `glm-4.6`, etc.                                              |
+| `KEYWORD_BATCH_SIZE` | Number of parallel keyword searches                   | ❌ No    | Default: `5`                                                                           |
+| `TEST_RUN_DATE`      | Backfill date (YYYY-MM-DD, leave empty for live runs) | ❌ No    | `2025-11-14` or empty                                                                  |
+
+#### 🔌 Supported AI Providers
+
+This tool works with **any OpenAI-compatible API**, including:
+
+- **OpenAI** (GPT-3.5, GPT-4, etc.)
+
+  ```env
+  AI_BASE_URL=https://api.openai.com/v1/
+  AI_MODEL=gpt-4
+  ```
+
+- **Zhipu AI** (GLM models)
+
+  ```env
+  AI_BASE_URL=https://api.z.ai/api/coding/paas/v4
+  AI_MODEL=glm-4.6
+  ```
+
+- **Azure OpenAI**, **Anthropic Claude** (via compatibility layers), or any other OpenAI-compatible endpoint
 
 ### 2. Site Configuration
 

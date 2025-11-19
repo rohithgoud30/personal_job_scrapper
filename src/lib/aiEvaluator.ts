@@ -31,10 +31,10 @@ let openAiClient: OpenAI | null = null;
 
 function getClient(): OpenAI {
   if (!openAiClient) {
-    const apiKey = requireEnv("zAiApiKey");
+    const apiKey = requireEnv("aiApiKey");
     openAiClient = new OpenAI({
       apiKey,
-      baseURL: env.zAiBaseUrl,
+      baseURL: env.aiBaseUrl,
     });
   }
   return openAiClient;
@@ -62,7 +62,7 @@ export async function findIrrelevantJobIds(
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const completion = await client.chat.completions.create({
-        model: "glm-4.6",
+        model: env.aiModel || "gpt-3.5-turbo",
         temperature: 0,
         response_format: { type: "json_object" },
         messages: [
@@ -126,7 +126,7 @@ export async function evaluateJobDetail(
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const completion = await client.chat.completions.create({
-        model: "glm-4.5-Air",
+        model: env.aiModel || "gpt-3.5-turbo",
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: systemPrompt },
