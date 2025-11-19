@@ -28,9 +28,15 @@ npx playwright install chromium
     ```
 2.  Edit `.env` and add your **Zhipu AI API Key** (required for AI filtering):
     ```env
-    zAiApiKey=your_api_key_here
+    ZAI_API_KEY=your-z-ai-key
+    ZAI_BASE_URL=https://api.z.ai/api/coding/paas/v4
+    KEYWORD_BATCH_SIZE=5
+    TEST_RUN_DATE=2025-11-14
     ```
-    _(Optional)_ Adjust `KEYWORD_BATCH_SIZE` to control how many tabs open in parallel.
+    - `ZAI_API_KEY`: Your Zhipu AI API key (required).
+    - `ZAI_BASE_URL`: API endpoint (optional, defaults shown).
+    - `KEYWORD_BATCH_SIZE`: Number of parallel keyword searches (optional, default 5).
+    - `TEST_RUN_DATE`: Backfill date in YYYY-MM-DD format (optional, leave empty for live runs).
 
 ## 🏃‍♂️ Running the Scrapers
 
