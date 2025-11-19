@@ -128,8 +128,8 @@ TEST_RUN_DATE=2025-11-14 npm start -- --site=kforce
 | Site           | Speed          | Visa Filter  | Notes                                    |
 | -------------- | -------------- | ------------ | ---------------------------------------- |
 | **CorpToCorp** | ⚡⚡⚡ Fastest | OPT/STEM OPT | C2C listings, auto-sorts by date         |
-| **Kforce**     | ⚡ Slower      | Standard     | Contract roles, 30s crawl-delay required |
-| **Randstad**   | ⚡⚡ Fast      | Standard     | Contract/Temp jobs                       |
+| **Kforce**     | ⚡ Slower      | OPT/STEM OPT | Contract roles, 30s crawl-delay required |
+| **Randstad**   | ⚡⚡ Fast      | OPT/STEM OPT | Contract/Temp jobs                       |
 
 ## 🧠 How It Works
 
@@ -162,8 +162,8 @@ TEST_RUN_DATE=2025-11-14 npm start -- --site=kforce
 
 - ✅ **Tech Stack**: React, Angular, Next.js, Node.js, Java/Spring Boot, Python/FastAPI
 - ✅ **Experience**: 5 to <6 years (e.g., "5 years", "1-5 years", "5+")
-- ✅ **Visa** (CorpToCorp): OPT, STEM OPT, or no restrictions
-- ❌ **Rejects**: 6+ years, H1B/USC-only, non-web stacks
+- ✅ **Visa**: OPT, STEM OPT, or no restrictions
+- ❌ **Rejects**: 6+ years, H1B/H4/USC/GC-only, non-web stacks
 
 ## 📂 Output Structure
 

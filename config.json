@@ -251,16 +251,6 @@
         "buttonSelectors": ["button:has-text('Okay')", "button:text('Okay')"],
         "textMatches": ["Okay"],
         "waitForSeconds": 2
-      },
-      "ai": {
-        "prompts": {
-          "detailEvaluation": [
-            "You read a job description and decide if it fits these web/backend/full-stack stacks: frontend (React or Angular, React Native, TypeScript/JavaScript), backend (Java/Spring Boot, Python FastAPI/Django/Flask, or Node.js/Express), or full stack combining those. React Native can be standalone or paired with those backends. Cloud is fine only as a complement to these stacks.",
-            "Reject roles that are primarily: data engineering/ETL (Snowflake, Informatica, ETL), business analyst/PM, infrastructure/ops/observability-only, non-software roles, legacy tech (COBOL, Perl, C/C++, mainframe), Go/Golang, .NET/C#, or generic cloud-only without the web stacks.",
-            "Visa Requirements: You MUST ACCEPT roles that explicitly allow \"OPT\" or \"STEM OPT\", or have no specific visa restrictions mentioned. You MUST REJECT roles that are restricted to \"H1B\", \"H4\", \"GC\", or \"US Citizen\" ONLY (e.g., \"USC/GC/H1B only\", \"Only H1B\", \"H4/H1B only\", \"No OPT\"). If the description explicitly lists \"OPT\" or \"STEM OPT\" as acceptable, ACCEPT it even if other visas are listed.",
-            "Return JSON { \"accepted\": boolean, \"reasoning\": string } and set accepted=true only if the stack aligns with the above, the visa requirements are met (or not mentioned), AND the experience requirement is at least five years but below six years. Accept phrases like \"5 years\", \"5+ years\", \"up to 5 years\", \"1-5 years\". Reject anything that explicitly includes six or more years (e.g., \"6 years\", \"6+ years\", \"5-7 years\", \"6-8 years\", \"7-10 years\", \"at least six years\"). The reasoning should be a concise one-liner explaining accept/reject."
-          ]
-        }
       }
     }
   ],
@@ -277,7 +267,7 @@
       "detailEvaluation": [
         "You read a job description and decide if it fits these web/backend/full-stack stacks: frontend (React or Angular, React Native, TypeScript/JavaScript), backend (Java/Spring Boot, Python FastAPI/Django/Flask, or Node.js/Express), or full stack combining those. React Native can be standalone or paired with those backends. Cloud is fine only as a complement to these stacks.",
         "Reject roles that are primarily: data engineering/ETL (Snowflake, Informatica, ETL), business analyst/PM, infrastructure/ops/observability-only, non-software roles, legacy tech (COBOL, Perl, C/C++, mainframe), Go/Golang, .NET/C#, or generic cloud-only without the web stacks.",
-        "Visa Requirements: Accept roles unless they are strictly restricted to \"US Citizen Only\" (USC), \"Green Card Only\" (GC), \"H1B Only\", or \"H4 Only\". Roles allowing OPT, STEM OPT, or TN visas, or those with no mentioned restrictions, should be ACCEPTED.",
+        "Visa Requirements: You MUST ACCEPT roles that explicitly allow \"OPT\" or \"STEM OPT\", or have no specific visa restrictions mentioned. You MUST REJECT roles that are restricted to \"H1B\", \"H4\", \"GC\", or \"US Citizen\" ONLY (e.g., \"USC/GC/H1B only\", \"Only H1B\", \"H4/H1B only\", \"No OPT\"). If the description explicitly lists \"OPT\" or \"STEM OPT\" as acceptable, ACCEPT it even if other visas are listed.",
         "Return JSON { \"accepted\": boolean, \"reasoning\": string } and set accepted=true only if the stack aligns with the above, the visa requirements are met (or not mentioned), AND the experience requirement is at least five years but below six years. Accept phrases like \"5 years\", \"5+ years\", \"up to 5 years\", \"1-5 years\". Reject anything that explicitly includes six or more years (e.g., \"6 years\", \"6+ years\", \"5-7 years\", \"6-8 years\", \"7-10 years\", \"at least six years\"). The reasoning should be a concise one-liner explaining accept/reject."
       ]
     }
