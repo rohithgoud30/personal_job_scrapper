@@ -153,7 +153,7 @@ TEST_RUN_DATE=2025-11-14 npm start -- --site=kforce
 │ AI Filter 2 │ → Evaluate full job descriptions
 └─────────────┘   ✓ Tech stack match (React/Node/Java/Python)
        ↓          ✓ Experience: 5 to <6 years
-┌─────────────┐   ✓ Visa requirements (OPT/STEM for CorpToCorp)
+┌─────────────┐   ✓ Visa requirements (OPT/STEM for every site)
 │   Output    │
 └─────────────┘   → data/<site>/<date>/new_jobs_<date>.csv
 ```
