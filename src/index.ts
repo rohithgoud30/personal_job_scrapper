@@ -4,6 +4,7 @@ import { loadConfig, OutputConfig, SiteConfig } from "./lib/config";
 import { runKforceSite } from "./sites/kforce";
 import { runRandstadSite } from "./sites/randstadusa";
 import { runCorpToCorpSite } from "./sites/corptocorp";
+import { runVanguardSite } from "./sites/vanguard";
 import { RunOptions } from "./sites/types";
 
 async function runSite(
@@ -20,6 +21,9 @@ async function runSite(
       break;
     case "corptocorp":
       await runCorpToCorpSite(site, output, options);
+      break;
+    case "vanguard":
+      await runVanguardSite(site, output, options);
       break;
     default:
       console.warn(`No runner implemented for site key: ${site.key}`);
@@ -118,7 +122,17 @@ const runOptions: RunOptions = {
     process.argv.includes("--skip-batch-wait") ||
     process.argv.includes("--fast"),
   resumeSessionId: getArgValue("--resume-session") ?? getArgValue("--session"),
+  keywords: parseKeywords(),
 };
+
+function parseKeywords(): string[] | undefined {
+  const raw = getArgValue("--keywords");
+  if (!raw) return undefined;
+  return raw
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
+}
 
 if (runOptions.resumeSessionId && shouldSchedule) {
   console.warn(

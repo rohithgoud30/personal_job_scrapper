@@ -252,6 +252,57 @@
         "textMatches": ["Okay"],
         "waitForSeconds": 2
       }
+    },
+    {
+      "key": "vanguard",
+      "host": "vanguardjobs.com",
+      "userDataDir": ".playwright/vanguard",
+      "login": {
+        "required": false,
+        "url": "",
+        "email": "",
+        "password": "",
+        "selectors": {
+          "openLogin": "",
+          "email": "",
+          "password": "",
+          "submit": ""
+        }
+      },
+      "search": {
+        "url": "https://www.vanguardjobs.com/job-search-results/",
+        "criteria": {
+          "searchKeywords": []
+        },
+        "postedTodayOnly": false,
+        "selectors": {
+          "keywords": "input#cws_quickjobsearch_keywords",
+          "submit": "input.quicksearch-submit",
+          "card": "div.job",
+          "title": "a[id^='job-result']",
+          "location": "div.job-innerwrap > div.joblist-location",
+          "posted": "div.job-innerwrap > div.joblist-posdate",
+          "next": "a[aria-label='Go to the next page of results.']",
+          "description": "div.fusion-tabs div.fusion-tab-content",
+          "sortToggle": "select#sort-by",
+          "sortOptionText": "Newest"
+        }
+      },
+      "run": {
+        "maxPages": 2,
+        "throttleSeconds": 5,
+        "pageDelaySeconds": 5,
+        "keywordDelaySeconds": 10
+      },
+      "disallowPatterns": [],
+      "cookieConsent": {
+        "buttonSelectors": [
+          "#onetrust-accept-btn-handler",
+          "button#onetrust-accept-btn-handler"
+        ],
+        "textMatches": ["Accept All Cookies", "Accept"],
+        "waitForSeconds": 2
+      }
     }
   ],
   "ai": {

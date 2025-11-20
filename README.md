@@ -102,6 +102,9 @@ npm start -- --site=kforce
 
 # Randstad USA (Contract jobs)
 npm start -- --site=randstadusa
+
+# Vanguard (Financial services jobs)
+npm start -- --site=vanguard
 ```
 
 ### Run All Sites
@@ -119,6 +122,9 @@ npm start -- --site=corptocorp --session=session-2025-11-19T03-23-05-227Z
 # Skip delays between keyword batches (use sparingly)
 npm start -- --site=corptocorp --fast
 
+# Override keywords for specific search
+npm start -- --site=vanguard --keywords "java,python,react"
+
 # Backfill a specific date
 TEST_RUN_DATE=2025-11-14 npm start -- --site=kforce
 ```
@@ -130,6 +136,7 @@ TEST_RUN_DATE=2025-11-14 npm start -- --site=kforce
 | **CorpToCorp** | ⚡⚡⚡ Fastest | OPT/STEM OPT | C2C listings, auto-sorts by date         |
 | **Kforce**     | ⚡ Slower      | OPT/STEM OPT | Contract roles, 30s crawl-delay required |
 | **Randstad**   | ⚡⚡ Fast      | OPT/STEM OPT | Contract/Temp jobs                       |
+| **Vanguard**   | ⚡⚡ Fast      | OPT/STEM OPT | Financial services, auto-sorts newest    |
 
 ## 🧠 How It Works
 
@@ -146,7 +153,7 @@ TEST_RUN_DATE=2025-11-14 npm start -- --site=kforce
 │ AI Filter 2 │ → Evaluate full job descriptions
 └─────────────┘   ✓ Tech stack match (React/Node/Java/Python)
        ↓          ✓ Experience: 5 to <6 years
-┌─────────────┐   ✓ Visa requirements (OPT/STEM for CorpToCorp)
+┌─────────────┐   ✓ Visa requirements (OPT/STEM for every site)
 │   Output    │
 └─────────────┘   → data/<site>/<date>/new_jobs_<date>.csv
 ```
