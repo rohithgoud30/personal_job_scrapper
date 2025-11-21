@@ -299,7 +299,11 @@ async function dismissPopup(page: Page): Promise<void> {
         "[corptocorp] Detected #ipt-popup-modal. Attempting to dismiss..."
       );
       const closeBtn = modal
-        .locator('button, .close, [class*="close"], text=Okay, text=Close')
+        .locator("button")
+        .or(modal.locator(".close"))
+        .or(modal.locator('[class*="close"]'))
+        .or(modal.getByText("Okay"))
+        .or(modal.getByText("Close"))
         .first();
       if (await closeBtn.isVisible()) {
         console.log("[corptocorp] Found close button. Clicking...");
