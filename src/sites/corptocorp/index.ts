@@ -285,32 +285,83 @@ async function scrapeKeywordInNewPage(
 
 async function prepareSearchPage(page: Page, site: SiteConfig): Promise<void> {
   await page.goto(site.search.url, { waitUntil: "domcontentloaded" });
+  // Initial popup check
+  await dismissPopup(page);
+}
 
-  // Handle popups (Important Notice & Notifications)
+async function dismissPopup(page: Page): Promise<void> {
   try {
-    // Give popups a moment to appear
-    await page.waitForTimeout(3000);
+    // 1. The specific modal causing issues: #ipt-popup-modal
+    // We will try to click the close button if visible, but we will ALWAYS force hide it afterwards.
+    const modal = page.locator("#ipt-popup-modal");
+    if (await modal.isVisible()) {
+      console.log(
+        "[corptocorp] Detected #ipt-popup-modal. Attempting to dismiss..."
+      );
+      const closeBtn = modal
+        .locator('button, .close, [class*="close"], text=Okay, text=Close')
+        .first();
+      if (await closeBtn.isVisible()) {
+        console.log("[corptocorp] Found close button. Clicking...");
+        await closeBtn.click();
+        await page.waitForTimeout(500);
+      }
+    }
 
-    // 1. Notification Popup ("NOT YET")
+    // ALWAYS force hide the modal and backdrop, just in case it's intercepting but "not visible" or animating out.
+    await page.evaluate(() => {
+      const el = document.querySelector("#ipt-popup-modal");
+      if (el) {
+        (el as HTMLElement).style.display = "none";
+        (el as HTMLElement).style.visibility = "hidden";
+        (el as HTMLElement).style.pointerEvents = "none";
+      }
+      const backdrop = document.querySelector(".modal-backdrop");
+      if (backdrop) (backdrop as HTMLElement).remove();
+
+      // Also remove any other potential blockers
+      document
+        .querySelectorAll('[id*="popup"], [class*="popup"], [class*="modal"]')
+        .forEach((el) => {
+          if (
+            getComputedStyle(el).position === "fixed" &&
+            getComputedStyle(el).zIndex !== "auto"
+          ) {
+            // Be careful not to hide the header/nav, but this is a specific scraper script.
+            // Let's stick to the specific ID for now to be safe, plus the backdrop.
+          }
+        });
+    });
+
+    // 2. Notification Popup ("NOT YET")
     const notYetBtn = page
       .getByRole("button", { name: "NOT YET", exact: true })
       .or(page.getByText("NOT YET"));
     if (await notYetBtn.isVisible()) {
       console.log('[corptocorp] Dismissing notification popup ("NOT YET")...');
       await notYetBtn.click();
-      await page.waitForTimeout(1000); // Wait for animation
+      await page.waitForTimeout(500);
     }
 
-    // 2. Important Notice Popup ("Okay")
+    // 3. Important Notice Popup ("Okay")
     const okayBtn = page
       .getByRole("button", { name: "Okay", exact: true })
       .or(page.getByText("Okay"));
     if (await okayBtn.isVisible()) {
       console.log('[corptocorp] Dismissing Important Notice popup ("Okay")...');
       await okayBtn.click();
+      await page.waitForTimeout(500);
     }
   } catch (e) {
-    // Ignore popup errors
+    console.warn("[corptocorp] Error in dismissPopup:", e);
+  }
+}
+
+async function expectModalToVanish(locator: Locator) {
+  try {
+    await locator.waitFor({ state: "hidden", timeout: 3000 });
+  } catch {
+    console.warn("[corptocorp] Modal did not vanish quickly after dismissal.");
   }
 }
 
@@ -643,13 +694,37 @@ async function ensureDateSort(page: Page): Promise<void> {
 
     if (!(await getClass()).includes("sorting_desc")) {
       console.log("[corptocorp] Sorting by Date (Newest First)...");
-      await dateHeader.click();
-      await page.waitForTimeout(1000);
+
+      // Retry loop for clicking
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await dismissPopup(page);
+          await dateHeader.click({ timeout: 5000 });
+          await page.waitForTimeout(1000);
+          break; // Success
+        } catch (err) {
+          console.warn(
+            `[corptocorp] Sort click attempt ${attempt} failed. Retrying...`
+          );
+          await page.waitForTimeout(1000);
+        }
+      }
 
       // If it became ascending, click again
       if ((await getClass()).includes("sorting_asc")) {
-        await dateHeader.click();
-        await page.waitForTimeout(1000);
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            await dismissPopup(page);
+            await dateHeader.click({ timeout: 5000 });
+            await page.waitForTimeout(1000);
+            break;
+          } catch (err) {
+            console.warn(
+              `[corptocorp] Sort (asc->desc) click attempt ${attempt} failed. Retrying...`
+            );
+            await page.waitForTimeout(1000);
+          }
+        }
       }
     }
   } catch (e) {
