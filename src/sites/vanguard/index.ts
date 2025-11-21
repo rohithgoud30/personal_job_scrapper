@@ -318,10 +318,8 @@ async function scrapeKeyword(
     );
   }
 
-  await Promise.all([
-    page.waitForLoadState("networkidle").catch(() => undefined),
-    submitButton.click({ delay: 50 }),
-  ]);
+  await submitButton.click({ delay: 50, noWaitAfter: true });
+  await page.waitForLoadState("networkidle").catch(() => undefined);
 
   if (selectors.card) {
     await page.waitForFunction(
