@@ -168,8 +168,6 @@ export async function findIrrelevantJobIds(
         `[AI] Failed to process title batch starting at index ${i}`,
         lastError
       );
-      // Optionally continue to next batch or throw?
-      // Throwing is safer to avoid false negatives (keeping bad titles)
       throw lastError ?? new Error("Title AI filter failed after retries.");
     }
   }
@@ -182,7 +180,6 @@ export async function evaluateJobDetail(
   siteConfig?: SiteConfig
 ): Promise<{ accepted: boolean; reasoning: string }> {
   const config = await loadConfig();
-  // Prioritize site-specific prompts if available, otherwise fall back to global
   const prompts =
     siteConfig?.ai?.prompts?.detailEvaluation ||
     config.ai?.prompts?.detailEvaluation;
