@@ -48,6 +48,10 @@ export async function findIrrelevantJobIds(
     return { removalSet: new Set(), reasons: new Map() };
   }
 
+  const BATCH_SIZE = 50;
+  const combinedRemovalSet = new Set<string>();
+  const combinedReasons = new Map<string, string>();
+
   const config = await loadConfig();
   const prompts = config.ai?.prompts?.titleFilter;
   const systemPrompt = Array.isArray(prompts)
@@ -63,56 +67,78 @@ export async function findIrrelevantJobIds(
       ].join(" ");
 
   const client = getClient();
-  const userContent = JSON.stringify(entries, null, 2);
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const completion = await client.chat.completions.create({
-        model: env.aiTitleFilterModel || "gpt-3.5-turbo",
-        temperature: 0,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-      });
 
-      const message = completion.choices[0]?.message?.content ?? "{}";
-      const parsed: AiIrrelevantResponse = JSON.parse(message);
-      const removalSet = new Set<string>();
-      const reasons = new Map<string, string>();
+  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+    const batch = entries.slice(i, i + BATCH_SIZE);
+    const userContent = JSON.stringify(batch, null, 2);
+    let lastError: unknown;
+    let batchSuccess = false;
 
-      if (Array.isArray(parsed.remove)) {
-        for (const entry of parsed.remove) {
-          const id = (entry?.job_id ?? "").trim();
-          if (!id) continue;
-          removalSet.add(id);
-          const reason =
-            typeof entry?.reason === "string" && entry.reason.trim().length > 0
-              ? entry.reason.trim()
-              : "Marked irrelevant.";
-          reasons.set(id, reason);
-        }
-      }
+    console.log(
+      `[AI] Processing title batch ${
+        Math.floor(i / BATCH_SIZE) + 1
+      }/${Math.ceil(entries.length / BATCH_SIZE)} (${batch.length} items)...`
+    );
 
-      if (!removalSet.size && Array.isArray(parsed.removeJobIds)) {
-        for (const id of parsed.removeJobIds) {
-          if (typeof id === "string" && id.trim()) {
-            removalSet.add(id.trim());
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const completion = await client.chat.completions.create({
+          model: env.aiTitleFilterModel || "gpt-3.5-turbo",
+          temperature: 0,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userContent },
+          ],
+        });
+
+        const message = completion.choices[0]?.message?.content ?? "{}";
+        const parsed: AiIrrelevantResponse = JSON.parse(message);
+
+        if (Array.isArray(parsed.remove)) {
+          for (const entry of parsed.remove) {
+            const id = (entry?.job_id ?? "").trim();
+            if (!id) continue;
+            combinedRemovalSet.add(id);
+            const reason =
+              typeof entry?.reason === "string" &&
+              entry.reason.trim().length > 0
+                ? entry.reason.trim()
+                : "Marked irrelevant.";
+            combinedReasons.set(id, reason);
           }
         }
-      }
 
-      return { removalSet, reasons };
-    } catch (error) {
-      lastError = error;
-      if (attempt < 3) {
-        await sleepBackoff(attempt);
+        if (!combinedRemovalSet.size && Array.isArray(parsed.removeJobIds)) {
+          for (const id of parsed.removeJobIds) {
+            if (typeof id === "string" && id.trim()) {
+              combinedRemovalSet.add(id.trim());
+            }
+          }
+        }
+
+        batchSuccess = true;
+        break;
+      } catch (error) {
+        lastError = error;
+        if (attempt < 3) {
+          await sleepBackoff(attempt);
+        }
       }
+    }
+
+    if (!batchSuccess) {
+      console.error(
+        `[AI] Failed to process title batch starting at index ${i}`,
+        lastError
+      );
+      // Optionally continue to next batch or throw?
+      // Throwing is safer to avoid false negatives (keeping bad titles)
+      throw lastError ?? new Error("Title AI filter failed after retries.");
     }
   }
 
-  throw lastError ?? new Error("Title AI filter failed after retries.");
+  return { removalSet: combinedRemovalSet, reasons: combinedReasons };
 }
 
 export async function evaluateJobDetail(
