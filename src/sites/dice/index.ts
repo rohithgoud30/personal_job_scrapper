@@ -558,6 +558,27 @@ async function evaluateDetailedJobs(
         }
       }
 
+      // Validate Posted Date if selector is present
+      if (site.search.selectors.postedDateDetail) {
+        const postedDateEl = page
+          .locator(site.search.selectors.postedDateDetail)
+          .first();
+        if (await postedDateEl.isVisible()) {
+          const text = (await postedDateEl.innerText()) || "";
+          // Look for "Posted X days ago"
+          const match = text.match(/Posted\s+(\d+)\s+days?\s+ago/i);
+          if (match) {
+            const daysAgo = parseInt(match[1], 10);
+            if (daysAgo > 15) {
+              console.log(
+                `[dice] Rejected "${role.title}" (${role.location}) – Reason: Posted ${daysAgo} days ago (> 15 days).`
+              );
+              continue;
+            }
+          }
+        }
+      }
+
       console.log(
         `[dice][AI] Detail candidate #${i + 1}/${roles.length} "${
           role.title
