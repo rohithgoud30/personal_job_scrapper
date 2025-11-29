@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { VertexAI, GenerativeModel } from "@google-cloud/vertexai";
 import { env, requireEnv } from "./env";
 import { loadConfig, SiteConfig } from "./config";
 
@@ -29,8 +30,9 @@ export interface TitleFilterResult {
 }
 
 let openAiClient: OpenAI | null = null;
+let vertexAiClient: VertexAI | null = null;
 
-function getClient(): OpenAI {
+function getOpenAiClient(): OpenAI {
   if (!openAiClient) {
     const apiKey = requireEnv("aiApiKey");
     openAiClient = new OpenAI({
@@ -39,6 +41,40 @@ function getClient(): OpenAI {
     });
   }
   return openAiClient;
+}
+
+function getVertexClient(): VertexAI {
+  if (!vertexAiClient) {
+    const project = process.env.GOOGLE_CLOUD_PROJECT;
+    const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
+
+    if (!project) {
+      throw new Error("GOOGLE_CLOUD_PROJECT environment variable is missing.");
+    }
+
+    vertexAiClient = new VertexAI({
+      project,
+      location,
+    });
+  }
+  return vertexAiClient;
+}
+
+function getVertexModel(
+  modelName: string,
+  systemInstruction?: string
+): GenerativeModel {
+  const client = getVertexClient();
+  return client.getGenerativeModel({
+    model: modelName,
+    systemInstruction: systemInstruction
+      ? { role: "system", parts: [{ text: systemInstruction }] }
+      : undefined,
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0,
+    },
+  });
 }
 
 export async function findIrrelevantJobIds(
@@ -66,7 +102,7 @@ export async function findIrrelevantJobIds(
         "Use only the provided title/company/location/url fields.",
       ].join(" ");
 
-  const client = getClient();
+  const client = getOpenAiClient();
 
   for (let i = 0; i < entries.length; i += BATCH_SIZE) {
     const batch = entries.slice(i, i + BATCH_SIZE);
@@ -161,23 +197,21 @@ export async function evaluateJobDetail(
         'Return JSON { "accepted": boolean, "reasoning": string } and set accepted=true only if the stack aligns with the above, the visa requirements are met (or not mentioned), AND the experience requirement is at least five years but below six years. Accept phrases like "5 years", "5+ years", "up to 5 years", "1-5 years". Reject anything that explicitly includes six or more years (e.g., "6 years", "6+ years", "5-7 years", "6-8 years", "7-10 years", "at least six years"). The reasoning should be a concise one-liner explaining accept/reject.',
       ].join(" ");
 
-  const client = getClient();
+  const modelName = env.aiDetailEvalModel || "gemini-2.0-flash-exp";
+  const model = getVertexModel(modelName, systemPrompt);
+
   const userContent = `Title: ${payload.title}\nCompany: ${payload.company}\nLocation: ${payload.location}\nURL: ${payload.url}\nDescription:\n${payload.description}`;
 
   let lastError: unknown;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const completion = await client.chat.completions.create({
-        model: env.aiDetailEvalModel || "gpt-4",
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: userContent }] }],
       });
 
-      const message = completion.choices[0]?.message?.content ?? "{}";
-      const parsed = JSON.parse(message);
+      const responseText =
+        result.response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+      const parsed = JSON.parse(responseText);
       return {
         accepted: Boolean(parsed.accepted),
         reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : "",
