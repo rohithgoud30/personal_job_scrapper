@@ -1,6 +1,5 @@
-import OpenAI from "openai";
 import { VertexAI, GenerativeModel } from "@google-cloud/vertexai";
-import { env, requireEnv } from "./env";
+import { env } from "./env";
 import { loadConfig, SiteConfig } from "./config";
 
 export interface TitleEntry {
@@ -29,19 +28,7 @@ export interface TitleFilterResult {
   reasons: Map<string, string>;
 }
 
-let openAiClient: OpenAI | null = null;
 let vertexAiClient: VertexAI | null = null;
-
-function getOpenAiClient(): OpenAI {
-  if (!openAiClient) {
-    const apiKey = requireEnv("aiApiKey");
-    openAiClient = new OpenAI({
-      apiKey,
-      baseURL: env.aiBaseUrl,
-    });
-  }
-  return openAiClient;
-}
 
 function getVertexClient(): VertexAI {
   if (!vertexAiClient) {
@@ -102,7 +89,8 @@ export async function findIrrelevantJobIds(
         "Use only the provided title/company/location/url fields.",
       ].join(" ");
 
-  const client = getOpenAiClient();
+  const modelName = env.aiTitleFilterModel || "gemini-2.0-flash-exp";
+  const model = getVertexModel(modelName, systemPrompt);
 
   for (let i = 0; i < entries.length; i += BATCH_SIZE) {
     const batch = entries.slice(i, i + BATCH_SIZE);
@@ -118,18 +106,13 @@ export async function findIrrelevantJobIds(
 
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const completion = await client.chat.completions.create({
-          model: env.aiTitleFilterModel || "gpt-3.5-turbo",
-          temperature: 0,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userContent },
-          ],
+        const result = await model.generateContent({
+          contents: [{ role: "user", parts: [{ text: userContent }] }],
         });
 
-        const message = completion.choices[0]?.message?.content ?? "{}";
-        const parsed: AiIrrelevantResponse = JSON.parse(message);
+        const responseText =
+          result.response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+        const parsed: AiIrrelevantResponse = JSON.parse(responseText);
 
         if (Array.isArray(parsed.remove)) {
           for (const entry of parsed.remove) {
