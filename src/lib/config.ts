@@ -85,6 +85,7 @@ export interface SearchSelectors {
   allFilters?: string;
   postedDateRadio?: string;
   employmentTypeCheckbox?: string;
+  postedDateDetail?: string;
   applyFilters?: string;
   description?: string;
 }
