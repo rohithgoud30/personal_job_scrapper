@@ -340,6 +340,7 @@
           "allFilters": "button:has-text('All filters')",
           "postedDateRadio": "input[type='radio'][value='ONE']",
           "employmentTypeCheckbox": "input[type='checkbox'][value='CONTRACT']",
+          "jobType": "div[class*='job-overview_detailContainer']",
           "applyFilters": "button:has-text('Apply filters')"
         }
       },

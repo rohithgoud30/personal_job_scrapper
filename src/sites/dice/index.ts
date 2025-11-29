@@ -528,6 +528,36 @@ async function evaluateDetailedJobs(
         timeout: 60000,
       });
       let description = await extractDescription(page, site);
+
+      // Validate Employment Type if selector is present
+      if (site.search.selectors.jobType) {
+        const jobTypeElements = page.locator(site.search.selectors.jobType);
+        const count = await jobTypeElements.count();
+        let foundFullTime = false;
+        let foundContract = false;
+
+        for (let j = 0; j < count; j++) {
+          const text = (await jobTypeElements.nth(j).innerText()).toLowerCase();
+          if (text.includes("full time") || text.includes("full-time")) {
+            foundFullTime = true;
+          }
+          if (
+            text.includes("contract") ||
+            text.includes("c2c") ||
+            text.includes("freelance")
+          ) {
+            foundContract = true;
+          }
+        }
+
+        if (foundFullTime && !foundContract) {
+          console.log(
+            `[dice] Rejected "${role.title}" (${role.location}) – Reason: Employment Type is Full Time.`
+          );
+          continue;
+        }
+      }
+
       console.log(
         `[dice][AI] Detail candidate #${i + 1}/${roles.length} "${
           role.title
