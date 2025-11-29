@@ -82,6 +82,11 @@ export interface SearchSelectors {
   jobType?: string;
   jobTypeFacetOption?: string;
   jobTypeFacetText?: string;
+  allFilters?: string;
+  postedDateRadio?: string;
+  employmentTypeCheckbox?: string;
+  applyFilters?: string;
+  description?: string;
 }
 
 export interface RunConfig {

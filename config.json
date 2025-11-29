@@ -303,6 +303,61 @@
         "textMatches": ["Accept All Cookies", "Accept"],
         "waitForSeconds": 2
       }
+    },
+    {
+      "key": "dice",
+      "host": "dice.com",
+      "userDataDir": ".playwright/dice",
+      "login": {
+        "required": false,
+        "url": "",
+        "email": "",
+        "password": "",
+        "selectors": {
+          "openLogin": "",
+          "email": "",
+          "password": "",
+          "submit": ""
+        }
+      },
+      "search": {
+        "url": "https://www.dice.com/jobs",
+        "criteria": {
+          "searchKeywords": []
+        },
+        "postedTodayOnly": true,
+        "selectors": {
+          "keywords": "input[placeholder='Job title, skill, company, keyword']",
+          "location": "input[placeholder='Location (ex. Denver, remote)']",
+          "submit": "button[aria-label='Search']",
+          "card": "div[data-cy='search-result-card'], div:has(a[href*='/job-detail/'])",
+          "title": "a[href*='/job-detail/'][aria-label]",
+          "company": "a[href*='/company-profile/']",
+          "locationText": ".search-result-location",
+          "posted": ".search-result-posted-date",
+          "next": "li.pagination-next a",
+          "description": "#jobDescription",
+          "allFilters": "button:has-text('All filters')",
+          "postedDateRadio": "input[type='radio'][value='ONE']",
+          "employmentTypeCheckbox": "input[type='checkbox'][value='CONTRACT']",
+          "applyFilters": "button:has-text('Apply filters')"
+        }
+      },
+      "run": {
+        "maxPages": 2,
+        "throttleSeconds": 5,
+        "pageDelaySeconds": 5,
+        "keywordDelaySeconds": 10
+      },
+      "disallowPatterns": [],
+      "cookieConsent": {
+        "buttonSelectors": [
+          "#onetrust-accept-btn-handler",
+          "button#onetrust-accept-btn-handler"
+        ],
+        "textMatches": ["Accept All Cookies", "Accept"],
+        "waitForSeconds": 2
+      }
     }
   ],
   "ai": {

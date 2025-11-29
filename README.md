@@ -94,6 +94,9 @@ All site-specific settings are in `config.json`:
 ### Run Individual Sites
 
 ```bash
+# Dice (Tech jobs, "Today" + "Contract" filters)
+npm start -- --site=dice
+
 # CorpToCorp (C2C jobs, OPT/STEM OPT friendly)
 npm start -- --site=corptocorp
 
@@ -106,6 +109,14 @@ npm start -- --site=randstadusa
 # Vanguard (Financial services jobs)
 npm start -- --site=vanguard
 ```
+
+### Data Cleanup
+
+The tool automatically checks for old data folders (from previous days) when you run it.
+
+- It lists any found folders.
+- Prompts you to delete them: `[cleanup] Do you want to delete these old folders? (y/N)`
+- Type `y` to clean up disk space, or `n` to keep them.
 
 ### Run All Sites
 
@@ -133,6 +144,7 @@ TEST_RUN_DATE=2025-11-14 npm start -- --site=kforce
 
 | Site           | Speed          | Visa Filter  | Notes                                    |
 | -------------- | -------------- | ------------ | ---------------------------------------- |
+| **Dice**       | ⚡⚡⚡ Fastest | OPT/STEM OPT | Bulk extraction, "Today" + "Contract"    |
 | **CorpToCorp** | ⚡⚡⚡ Fastest | OPT/STEM OPT | C2C listings, auto-sorts by date         |
 | **Kforce**     | ⚡ Slower      | OPT/STEM OPT | Contract roles, 30s crawl-delay required |
 | **Randstad**   | ⚡⚡ Fast      | OPT/STEM OPT | Contract/Temp jobs                       |

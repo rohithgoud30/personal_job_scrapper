@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import cron from "node-cron";
 import readline from "readline";
 import { loadConfig, OutputConfig, SiteConfig } from "./lib/config";
@@ -5,7 +7,9 @@ import { runKforceSite } from "./sites/kforce";
 import { runRandstadSite } from "./sites/randstadusa";
 import { runCorpToCorpSite } from "./sites/corptocorp";
 import { runVanguardSite } from "./sites/vanguard";
+import { runDiceSite } from "./sites/dice";
 import { RunOptions } from "./sites/types";
+import { getEasternDateParts } from "./lib/time";
 
 async function runSite(
   site: SiteConfig,
@@ -25,9 +29,75 @@ async function runSite(
     case "vanguard":
       await runVanguardSite(site, output, options);
       break;
+    case "dice":
+      await runDiceSite(site, output, options);
+      break;
     default:
       console.warn(`No runner implemented for site key: ${site.key}`);
       break;
+  }
+}
+
+async function cleanupOldData(
+  sites: SiteConfig[],
+  output: OutputConfig
+): Promise<void> {
+  const eastern = getEasternDateParts(new Date());
+  const month = String(eastern.month).padStart(2, "0");
+  const day = String(eastern.day).padStart(2, "0");
+  const year = eastern.year;
+  const todayFolder = `${month}_${day}_${year}`;
+
+  const foldersToDelete: string[] = [];
+
+  for (const site of sites) {
+    const siteDir = path.join(output.root, site.host);
+    if (!fs.existsSync(siteDir)) continue;
+
+    const entries = await fs.promises.readdir(siteDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        // Check if it matches date format MM_DD_YYYY
+        if (/^\d{2}_\d{2}_\d{4}$/.test(entry.name)) {
+          if (entry.name !== todayFolder) {
+            foldersToDelete.push(path.join(siteDir, entry.name));
+          }
+        }
+      }
+    }
+  }
+
+  if (foldersToDelete.length === 0) {
+    return;
+  }
+
+  console.log("[cleanup] Found old data folders:");
+  for (const folder of foldersToDelete) {
+    console.log(` - ${folder}`);
+  }
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  const answer = await new Promise<string>((resolve) => {
+    rl.question(
+      "[cleanup] Do you want to delete these old folders? (y/N) ",
+      resolve
+    );
+  });
+
+  rl.close();
+
+  if (answer.trim().toLowerCase() === "y") {
+    console.log("[cleanup] Deleting folders...");
+    for (const folder of foldersToDelete) {
+      await fs.promises.rm(folder, { recursive: true, force: true });
+      console.log(` - Deleted ${folder}`);
+    }
+  } else {
+    console.log("[cleanup] Skipped deletion.");
   }
 }
 
@@ -44,6 +114,9 @@ async function runAllSites(
     console.warn("[runner] No sites matched the provided --site filter.");
     return;
   }
+
+  // Run cleanup check before starting
+  await cleanupOldData(config.sites, config.output);
 
   const startTime = Date.now();
   const stopTimer = startElapsedTimer();
