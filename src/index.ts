@@ -40,7 +40,8 @@ async function runSite(
 
 async function cleanupOldData(
   sites: SiteConfig[],
-  output: OutputConfig
+  output: OutputConfig,
+  siteFilter: Set<string> | undefined
 ): Promise<void> {
   const eastern = getEasternDateParts(new Date());
   const month = String(eastern.month).padStart(2, "0");
@@ -50,7 +51,12 @@ async function cleanupOldData(
 
   const foldersToDelete: string[] = [];
 
-  for (const site of sites) {
+  // Filter sites if a specific site is requested
+  const targetSites = siteFilter
+    ? sites.filter((s) => siteFilter.has(s.key))
+    : sites;
+
+  for (const site of targetSites) {
     const siteDir = path.join(output.root, site.host);
     if (!fs.existsSync(siteDir)) continue;
 
@@ -116,7 +122,7 @@ async function runAllSites(
   }
 
   // Run cleanup check before starting
-  await cleanupOldData(config.sites, config.output);
+  await cleanupOldData(config.sites, config.output, siteFilter);
 
   const startTime = Date.now();
   const stopTimer = startElapsedTimer();
