@@ -142,13 +142,13 @@ TEST_RUN_DATE=2025-11-14 npm start -- --site=kforce
 
 ## 📊 Supported Sites
 
-| Site           | Speed          | Visa Filter  | Notes                                    |
-| -------------- | -------------- | ------------ | ---------------------------------------- |
-| **Dice**       | ⚡⚡⚡ Fastest | OPT/STEM OPT | Bulk extraction, "Today" + "Contract"    |
-| **CorpToCorp** | ⚡⚡⚡ Fastest | OPT/STEM OPT | C2C listings, auto-sorts by date         |
-| **Kforce**     | ⚡ Slower      | OPT/STEM OPT | Contract roles, 30s crawl-delay required |
-| **Randstad**   | ⚡⚡ Fast      | OPT/STEM OPT | Contract/Temp jobs                       |
-| **Vanguard**   | ⚡⚡ Fast      | OPT/STEM OPT | Financial services, auto-sorts newest    |
+| Site           | Speed          | Visa Filter  | Notes                                                  |
+| -------------- | -------------- | ------------ | ------------------------------------------------------ |
+| **Dice**       | ⚡⚡⚡ Fastest | OPT/STEM OPT | Bulk extraction, "Today" (robust parsing) + "Contract" |
+| **CorpToCorp** | ⚡⚡⚡ Fastest | OPT/STEM OPT | C2C listings, auto-sorts by date                       |
+| **Kforce**     | ⚡ Slower      | OPT/STEM OPT | Contract roles, 30s crawl-delay required               |
+| **Randstad**   | ⚡⚡ Fast      | OPT/STEM OPT | Contract/Temp jobs                                     |
+| **Vanguard**   | ⚡⚡ Fast      | OPT/STEM OPT | Financial services, auto-sorts newest                  |
 
 ## 🧠 How It Works
 
@@ -180,9 +180,10 @@ TEST_RUN_DATE=2025-11-14 npm start -- --site=kforce
 **Stage 2: Detail Evaluation** (Model: `glm-4.5-Air`)
 
 - ✅ **Tech Stack**: React, Angular, Next.js, Node.js, Java/Spring Boot, Python/FastAPI
-- ✅ **Experience**: 5 to <6 years (e.g., "5 years", "1-5 years", "5+")
-- ✅ **Visa**: OPT, STEM OPT, or no restrictions
-- ❌ **Rejects**: 6+ years, H1B/H4/USC/GC-only, non-web stacks
+- ✅ **Experience**: Min <= 5 years (e.g., "3-5 years", "5+", "5 years"). Accepts parallel experience.
+- ✅ **Visa**: Explicitly accepts OPT/STEM OPT, or if not mentioned.
+- ❌ **Rejects**: Min > 5 years (e.g. "6+ years"), H1B/H4/USC/GC-only restrictions, non-web stacks.
+- 🕒 **Posted Date**: Rejects jobs posted > 15 days ago. Requires recent update if posted > 1 day ago.
 
 ## 📂 Output Structure
 
@@ -238,5 +239,4 @@ MIT License - see LICENSE file for details
 ## 🙏 Acknowledgments
 
 - [Playwright](https://playwright.dev/) for browser automation
-- [Zhipu AI](https://open.bigmodel.cn/) for intelligent job filtering
 - [TypeScript](https://www.typescriptlang.org/) for type safety
