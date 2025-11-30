@@ -260,7 +260,14 @@ async function scrapeKeywordInNewPage(
   const page = await context.newPage();
   try {
     console.log(`[dice] Searching for keyword "${keyword}"`);
-    await prepareSearchPage(page, site, keyword);
+    const shouldProceed = await prepareSearchPage(page, site, keyword);
+    if (!shouldProceed) {
+      console.log(
+        `[dice] Skipping keyword "${keyword}" (0 results for Today).`
+      );
+      return;
+    }
+
     const rows = await collectListingRows(
       page,
       site,
@@ -295,7 +302,7 @@ async function prepareSearchPage(
   page: Page,
   site: SiteConfig,
   keyword: string
-): Promise<void> {
+): Promise<boolean> {
   await page.goto(site.search.url, { waitUntil: "domcontentloaded" });
   await acceptCookieConsent(page, site.cookieConsent);
 
@@ -326,36 +333,62 @@ async function prepareSearchPage(
     const allFiltersBtn = page.locator(selectors.allFilters).first();
     if (await allFiltersBtn.isVisible()) {
       await allFiltersBtn.click();
-      await page.waitForTimeout(5000); // Wait for drawer/modal
+      await page.waitForTimeout(3000); // Wait for drawer/modal
 
       // Posted Date: Today
       if (selectors.postedDateRadio) {
-        const todayRadio = page.locator(selectors.postedDateRadio).first();
-        if (await todayRadio.isVisible()) {
-          await todayRadio.click({ force: true });
+        // Check for "Today (0)" case
+        const todayLabel = page
+          .locator("label")
+          .filter({ hasText: "Today" })
+          .first();
+
+        if (await todayLabel.isVisible()) {
+          const labelText = await todayLabel.innerText();
+          // Check for "Today (0)"
+          if (labelText.includes("(0)")) {
+            console.log(
+              `[dice] "Today" filter shows 0 results: "${labelText}".`
+            );
+            return false;
+          }
+
+          // Click "Today"
+          // Try clicking the label as it's often more reliable for custom radios
+          await todayLabel.scrollIntoViewIfNeeded();
+          await todayLabel.click({ force: true });
+          console.log("[dice] Clicked 'Today' filter.");
+          await page.waitForTimeout(500);
         } else {
-          console.warn("[dice] 'Today' filter radio not visible.");
+          console.warn("[dice] 'Today' filter label not visible.");
         }
       }
 
       // Employment Type: Contract
       if (selectors.employmentTypeCheckbox) {
-        // Wait a bit more to be safe
-        await page.waitForTimeout(2000);
-
-        // Try to find the label by text, which is more robust than the checkbox input sometimes
+        await page.waitForTimeout(1000);
         const contractLabel = page
           .locator("label")
           .filter({ hasText: "Contract" })
           .first();
 
+        if (await contractLabel.isVisible()) {
+          const labelText = await contractLabel.innerText();
+          if (labelText.includes("(0)")) {
+            console.log(
+              `[dice] "Contract" filter shows 0 results: "${labelText}".`
+            );
+            return false;
+          }
+        }
+
         try {
           await contractLabel.waitFor({ state: "visible", timeout: 5000 });
           await contractLabel.scrollIntoViewIfNeeded();
           await contractLabel.click({ force: true });
+          console.log("[dice] Clicked 'Contract' filter.");
         } catch (e) {
           console.warn("[dice] Failed to click 'Contract' label.", e);
-          // Fallback to checkbox input
           const contractCheckbox = page
             .locator(selectors.employmentTypeCheckbox)
             .first();
@@ -371,12 +404,60 @@ async function prepareSearchPage(
 
       // Apply
       if (selectors.applyFilters) {
+        await page.waitForTimeout(2000); // Ensure previous clicks are registered
         const applyBtn = page.locator(selectors.applyFilters).first();
-        await applyBtn.click({ force: true });
+        // Ensure drawer is open
+        if (!(await applyBtn.isVisible())) {
+          console.log("[dice] Apply button not visible. Re-opening drawer...");
+          const allFiltersBtn = page.locator(selectors.allFilters).first();
+          await allFiltersBtn.click();
+          await page.waitForTimeout(2000);
+        }
+
+        await applyBtn.scrollIntoViewIfNeeded();
+        // Use evaluate click to avoid viewport issues
+        await applyBtn.evaluate((el) => (el as HTMLElement).click());
+
+        // Wait for URL to update with filters
+        // Wait for URL to update with filters
+        try {
+          await page.waitForURL(
+            (url) => {
+              const s = url.toString();
+              // Check for presence of filters, allow CONTRACTS (plural)
+              return (
+                s.includes("filters.postedDate=ONE") &&
+                s.includes("filters.employmentType")
+              );
+            },
+            { timeout: 30000 }
+          );
+          console.log(
+            "[dice] Filters applied successfully (verified via URL)."
+          );
+        } catch (e) {
+          console.warn(
+            "[dice] Warning: URL did not update with expected filters within 30s. Checking if Apply button is still visible...",
+            e
+          );
+          if (await applyBtn.isVisible()) {
+            console.log("[dice] Apply button still visible. Clicking again...");
+            try {
+              await applyBtn.scrollIntoViewIfNeeded();
+              await applyBtn.evaluate((el) => (el as HTMLElement).click());
+              await page.waitForTimeout(2000);
+            } catch (retryErr) {
+              console.warn("[dice] Retry click failed:", retryErr);
+            }
+          }
+        }
+
         await page.waitForLoadState("networkidle").catch(() => undefined);
       }
     }
   }
+
+  return true;
 }
 
 async function collectListingRows(
@@ -392,8 +473,19 @@ async function collectListingRows(
   }
 
   // Wait for results
+  // Wait for results
   try {
     await page.waitForSelector(selectors.card, { timeout: 30000 });
+    // Also wait for at least one posted date to be visible to ensure hydration
+    if (selectors.posted) {
+      await page
+        .waitForSelector(selectors.posted, { timeout: 5000 })
+        .catch(() => {
+          console.log(
+            "[dice] Timed out waiting for posted date selector. Proceeding anyway."
+          );
+        });
+    }
   } catch {
     console.log(`[dice] No results found for "${keyword}"`);
     return [];
@@ -406,7 +498,26 @@ async function collectListingRows(
     // Use evaluate to extract all data at once
     // We pass the selectors object to the browser context
     const rawJobs = await page.evaluate((selectors) => {
-      const cards = Array.from(document.querySelectorAll(selectors.card!));
+      const allMatches = Array.from(document.querySelectorAll(selectors.card!));
+
+      // Filter logic:
+      // 1. Identify "candidates" that contain a reasonable number of other matches (e.g. 1-10).
+      //    - Excludes the main List (contains too many).
+      //    - Excludes leaf fragments (contain 0).
+      // 2. From candidates, keep only the outermost ones.
+
+      const candidates = allMatches.filter((el) => {
+        const count = allMatches.filter(
+          (other) => el !== other && el.contains(other)
+        ).length;
+        return count > 0;
+      });
+
+      // Keep innermost: Filter out elements that contain another candidate
+      const cards = candidates.filter(
+        (el) => !candidates.some((child) => child !== el && el.contains(child))
+      );
+
       return cards.map((card) => {
         const titleEl = selectors.title
           ? card.querySelector(selectors.title)
@@ -426,18 +537,61 @@ async function collectListingRows(
         const company = companyEl
           ? (companyEl as HTMLElement).innerText.trim()
           : "";
-        const location = locationEl
+        let location = locationEl
           ? (locationEl as HTMLElement).innerText.trim()
           : "";
-        const posted = postedEl
-          ? (postedEl as HTMLElement).innerText.trim()
-          : "";
+        let posted = postedEl ? (postedEl as HTMLElement).innerText.trim() : "";
 
-        return { title, href, company, location, posted };
+        // Fallback: Check outerHTML directly
+        if (!posted) {
+          const html = card.outerHTML;
+          if (html.match(/>\s*Today\s*</i)) {
+            posted = "Today";
+          } else if (html.match(/>\s*Just now\s*</i)) {
+            posted = "Just now";
+          } else {
+            const match = html.match(
+              />\s*(\d+ (minute|hour|day|week)s? ago)\s*</i
+            );
+            if (match) {
+              posted = match[1];
+            }
+          }
+        }
+
+        // Force "Today" if the text "Today" appears anywhere in the card's innerText
+        // This is a broad catch-all requested by the user to handle sponsored/weird layouts
+        const text = (card as HTMLElement).innerText;
+        if (!posted && text && text.match(/Today/i)) {
+          posted = "Today";
+        }
+
+        // Location fallback
+        if (!location && text) {
+          // Try to find a pattern like "City, State" or look for text near the date
+          // This is heuristic and might need tuning
+          const locMatch = text.match(/([A-Z][a-zA-Z\s]+, [A-Z]{2})/);
+          if (locMatch) {
+            location = locMatch[1];
+          }
+        }
+
+        return { title, href, company, location, posted, html: card.outerHTML };
       });
     }, selectors);
 
     console.log(`[dice] Found ${rawJobs.length} cards on page ${pageIndex}`);
+
+    // Debug empty posted dates
+    const emptyPosted = rawJobs.filter((r) => !r.posted).length;
+    if (emptyPosted > 0) {
+      console.warn(
+        `[dice] Warning: ${emptyPosted}/${rawJobs.length} cards have empty posted dates.`
+      );
+      if (rawJobs.length > 0) {
+        // console.log(`[dice] Sample Card HTML: ${rawJobs[0].html}`);
+      }
+    }
 
     for (const raw of rawJobs) {
       if (!raw.title || !raw.href) continue;
@@ -463,14 +617,24 @@ async function collectListingRows(
       rows.push(row);
     }
 
-    // Check if the last job is from today
+    // Check if the last *valid* job is from today
     if (rows.length > 0) {
-      const lastRow = rows[rows.length - 1];
-      if (!isPostedToday(lastRow.posted)) {
-        console.log(
-          `[dice] Last job posted "${lastRow.posted}" is not from today. Stopping pagination.`
+      // Find the last row that has a non-empty posted date
+      const lastValidRow = [...rows]
+        .reverse()
+        .find((r) => r.posted && r.posted.length > 0);
+
+      if (lastValidRow) {
+        if (!isPostedToday(lastValidRow.posted)) {
+          console.log(
+            `[dice] Last valid job posted "${lastValidRow.posted}" is not from today. Stopping pagination.`
+          );
+          break;
+        }
+      } else {
+        console.warn(
+          "[dice] Warning: All jobs in this batch have empty posted dates. Cannot determine if we should stop. Proceeding..."
         );
-        break;
       }
     }
 
@@ -565,17 +729,59 @@ async function evaluateDetailedJobs(
           .first();
         if (await postedDateEl.isVisible()) {
           const text = (await postedDateEl.innerText()) || "";
-          // Look for "Posted X days ago"
-          const match = text.match(/Posted\s+(\d+)\s+days?\s+ago/i);
-          if (match) {
-            const daysAgo = parseInt(match[1], 10);
-            if (daysAgo > 15) {
+
+          // Parse "Posted X days ago"
+          const postedMatch = text.match(/Posted\s+(\d+)\s+days?\s+ago/i);
+          const postedDaysAgo = postedMatch ? parseInt(postedMatch[1], 10) : 0; // Default to 0 (today) if not found or "moments ago"
+
+          // Parse "Updated X days ago" or "Updated X hours ago"
+          // "Updated 2 hours ago", "Updated moments ago", "Updated 1 day ago"
+          let updatedDaysAgo = -1; // -1 means not updated or not found
+
+          if (text.toLowerCase().includes("updated")) {
+            if (
+              text.match(/updated\s+moments\s+ago/i) ||
+              text.match(/updated\s+just\s+now/i) ||
+              text.match(/updated\s+\d+\s+hours?\s+ago/i) ||
+              text.match(/updated\s+\d+\s+minutes?\s+ago/i)
+            ) {
+              updatedDaysAgo = 0;
+            } else {
+              const updatedMatch = text.match(/updated\s+(\d+)\s+days?\s+ago/i);
+              if (updatedMatch) {
+                updatedDaysAgo = parseInt(updatedMatch[1], 10);
+              }
+            }
+          }
+
+          // Logic:
+          // 1. If Posted > 15 days -> REJECT
+          if (postedDaysAgo > 15) {
+            console.log(
+              `[dice] Rejected "${role.title}" (${role.location}) – Reason: Posted ${postedDaysAgo} days ago (> 15 days).`
+            );
+            continue;
+          }
+
+          // 2. If Posted > 1 day (i.e., 2 days or more)
+          if (postedDaysAgo > 1) {
+            // MUST be updated recently (<= 1 day)
+            const isUpdatedRecently =
+              updatedDaysAgo !== -1 && updatedDaysAgo <= 1;
+
+            if (!isUpdatedRecently) {
               console.log(
-                `[dice] Rejected "${role.title}" (${role.location}) – Reason: Posted ${daysAgo} days ago (> 15 days).`
+                `[dice] Rejected "${role.title}" (${
+                  role.location
+                }) – Reason: Posted ${postedDaysAgo} days ago and not updated recently (Updated: ${
+                  updatedDaysAgo === -1 ? "Never" : updatedDaysAgo + " days ago"
+                }).`
               );
               continue;
             }
           }
+
+          // If Posted <= 1 day, we accept (it's recent enough)
         }
       }
 

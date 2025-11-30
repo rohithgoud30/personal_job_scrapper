@@ -330,11 +330,11 @@
           "keywords": "input[placeholder='Job title, skill, company, keyword']",
           "location": "input[placeholder='Location (ex. Denver, remote)']",
           "submit": "button[aria-label='Search']",
-          "card": "div[data-cy='search-result-card'], div:has(a[href*='/job-detail/'])",
+          "card": "div:has(a[href*='/job-detail/'])",
           "title": "a[href*='/job-detail/'][aria-label]",
           "company": "a[href*='/company-profile/']",
           "locationText": ".search-result-location",
-          "posted": ".search-result-posted-date",
+          "posted": ".search-result-posted-date, span[data-cy='card-posted-date'], .posted-date, div[class*='posted']",
           "next": "li.pagination-next a",
           "description": "#jobDescription",
           "allFilters": "button:has-text('All filters')",
@@ -377,8 +377,8 @@
         "You read a job description and decide if it fits these web/backend/full-stack stacks: frontend (React or Angular, React Native, TypeScript/JavaScript), backend (Java/Spring Boot, Python FastAPI/Django/Flask, or Node.js/Express), or full stack combining those. React Native can be standalone or paired with those backends. Cloud is fine only as a complement to these stacks.",
         "Reject roles that are primarily: data engineering/ETL (Snowflake, Informatica, Data Engineer), business analyst/PM, infrastructure/ops/observability-only, non-software roles, legacy tech (COBOL, Perl, C/C++, mainframe), Go/Golang, .NET/C#, generic cloud-only without the web stacks, or Staff, Senior, Lead, Principal, Manager, Director, VP, Head of, or Architect roles.",
         "REJECT all 'Staff', 'Senior', 'Sr', 'Lead', 'Principal', 'Manager', 'Director', 'VP', 'Head of', or 'Architect' roles regardless of the stack.",
-        "Visa Requirements: You MUST ACCEPT roles that explicitly allow \"OPT\" or \"STEM OPT\", or have no specific visa restrictions mentioned. If visa status is NOT mentioned, ACCEPT the role. You MUST REJECT roles that are restricted to \"H1B\", \"H4\", \"GC\", or \"US Citizen\" ONLY (e.g., \"USC/GC/H1B only\", \"Only H1B\", \"H4/H1B only\", \"No OPT\"). If the description explicitly lists \"OPT\" or \"STEM OPT\" as acceptable, ACCEPT it even if other visas are listed.",
-        "Return JSON { \"accepted\": boolean, \"reasoning\": string } and set accepted=true only if the stack aligns with the above, the visa requirements are met (or not mentioned), AND the experience requirement is suitable. EXPERIENCE RULES: 1. If experience is NOT mentioned, ACCEPT IT. 2. If a range is given (e.g., \"3-5 years\", \"5-8 years\", \"4-9 years\"), ACCEPT IT if the MINIMUM is 5 years or less. 3. ACCEPT \"5+ years\", \"5 years\", \"3+ years\". 4. ACCEPT parallel experience (e.g., 4y React + 3y Java). 5. ONLY REJECT if the MINIMUM required experience is STRICTLY GREATER than 5 years (e.g., \"6+ years\", \"minimum 6 years\", \"7-10 years\", \"at least 6 years\"). 6. Reject if job requires experience in >3 separate skills. The reasoning should be a concise one-liner."
+        "Visa Requirements: You MUST ACCEPT roles that explicitly allow \"OPT\" or \"STEM OPT\", or have no specific visa restrictions mentioned. If visa status is NOT mentioned, ACCEPT the role. SPECIAL RULE FOR CONTRACTS: If the role is a CONTRACT role (including W2 Contract), ACCEPT it even if it says 'No visa sponsorship' or 'US Citizen/GC Only'. For FULL-TIME roles, REJECT if restricted to \"H1B\", \"H4\", \"GC\", or \"US Citizen\" ONLY (e.g., \"USC/GC/H1B only\", \"Only H1B\", \"H4/H1B only\", \"No OPT\"). If the description explicitly lists \"OPT\" or \"STEM OPT\" as acceptable, ACCEPT it even if other visas are listed.",
+        "Return JSON { \"accepted\": boolean, \"reasoning\": string } and set accepted=true only if the stack aligns with the above, the visa requirements are met (or not mentioned), AND the experience requirement is suitable. EXPERIENCE RULES: 1. If experience is NOT mentioned, ACCEPT IT. 2. If a range is given (e.g., \"3-5 years\", \"5-8 years\", \"4-9 years\"), ACCEPT IT if the MINIMUM is 5 years or less. 3. ACCEPT \"5+ years\", \"5 years\", \"3+ years\". 4. ACCEPT parallel experience (e.g., 4y React + 3y Java). 5. ONLY REJECT if the MINIMUM required experience is STRICTLY GREATER than 5 years (e.g., \"6+ years\", \"minimum 6 years\", \"7-10 years\", \"at least 6 years\"). The reasoning should be a concise one-liner."
       ]
     }
   }
