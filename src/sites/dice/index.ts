@@ -718,6 +718,9 @@ async function evaluateDetailedJobs(
         const count = await jobTypeElements.count();
         let foundFullTime = false;
         let foundContract = false;
+        let foundW2Contract = false;
+        let foundC2C = false;
+        let foundIndependent = false;
 
         for (let j = 0; j < count; j++) {
           const text = (await jobTypeElements.nth(j).innerText()).toLowerCase();
@@ -731,18 +734,61 @@ async function evaluateDetailedJobs(
           ) {
             foundContract = true;
           }
+          // Check for W2 Contract specifically
+          if (
+            text.includes("contract - w2") ||
+            text.includes("contract-w2") ||
+            text.includes("contract w2")
+          ) {
+            foundW2Contract = true;
+          }
+          // Check for corp-to-corp
+          if (
+            text.includes("corp to corp") ||
+            text.includes("c2c") ||
+            text.includes("corp-to-corp")
+          ) {
+            foundC2C = true;
+          }
+          // Check for independent contract
+          if (
+            text.includes("contract - independent") ||
+            text.includes("contract-independent") ||
+            text.includes("independent")
+          ) {
+            foundIndependent = true;
+          }
         }
 
+        // Reject if ONLY Full Time (no contract options at all)
         if (foundFullTime && !foundContract) {
           console.log(
-            `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: Employment Type is Full Time.`
+            `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: Employment Type is Full Time only.`
           );
           rejectedLogger.log({
             title: role.title,
             site: site.key,
             url: role.url,
             jd: description,
-            reason: "Employment Type is Full Time",
+            reason: "Employment Type is Full Time only",
+            scraped_at: role.scraped_at,
+            type: "detail",
+          });
+          continue;
+        }
+
+        // Reject if ONLY W2 Contract (without C2C or Independent options)
+        if (foundW2Contract && !foundC2C && !foundIndependent) {
+          console.log(
+            `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: Employment Type is W2 Contract only (no C2C or Independent options).`
+          );
+          rejectedLogger.log({
+            title: role.title,
+            site: site.key,
+            url: role.url,
+            jd: description,
+            reason:
+              "Employment Type is W2 Contract only (no C2C or Independent options)",
             scraped_at: role.scraped_at,
             type: "detail",
           });
