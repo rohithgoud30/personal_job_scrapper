@@ -269,11 +269,11 @@ async function scrapeKeywordInNewPage(
 ): Promise<void> {
   const page = await context.newPage();
   try {
-    console.log(`[dice] Searching for keyword "${keyword}"`);
+    console.log(`[dice][${keyword}] Searching for keyword "${keyword}"`);
     const shouldProceed = await prepareSearchPage(page, site, keyword);
     if (!shouldProceed) {
       console.log(
-        `[dice] Skipping keyword "${keyword}" (0 results for Today).`
+        `[dice][${keyword}] Skipping keyword "${keyword}" (0 results for Today).`
       );
       return;
     }
@@ -358,7 +358,7 @@ async function prepareSearchPage(
           // Check for "Today (0)"
           if (labelText.includes("(0)")) {
             console.log(
-              `[dice] "Today" filter shows 0 results: "${labelText}".`
+              `[dice][${keyword}] "Today" filter shows 0 results: "${labelText}".`
             );
             return false;
           }
@@ -367,10 +367,10 @@ async function prepareSearchPage(
           // Try clicking the label as it's often more reliable for custom radios
           await todayLabel.scrollIntoViewIfNeeded();
           await todayLabel.click({ force: true });
-          console.log("[dice] Clicked 'Today' filter.");
+          console.log(`[dice][${keyword}] Clicked 'Today' filter.`);
           await page.waitForTimeout(500);
         } else {
-          console.warn("[dice] 'Today' filter label not visible.");
+          console.warn(`[dice][${keyword}] 'Today' filter label not visible.`);
         }
       }
 
@@ -386,7 +386,7 @@ async function prepareSearchPage(
           const labelText = await contractLabel.innerText();
           if (labelText.includes("(0)")) {
             console.log(
-              `[dice] "Contract" filter shows 0 results: "${labelText}".`
+              `[dice][${keyword}] "Contract" filter shows 0 results: "${labelText}".`
             );
             return false;
           }
@@ -396,9 +396,12 @@ async function prepareSearchPage(
           await contractLabel.waitFor({ state: "visible", timeout: 5000 });
           await contractLabel.scrollIntoViewIfNeeded();
           await contractLabel.click({ force: true });
-          console.log("[dice] Clicked 'Contract' filter.");
+          console.log(`[dice][${keyword}] Clicked 'Contract' filter.`);
         } catch (e) {
-          console.warn("[dice] Failed to click 'Contract' label.", e);
+          console.warn(
+            `[dice][${keyword}] Failed to click 'Contract' label.`,
+            e
+          );
           const contractCheckbox = page
             .locator(selectors.employmentTypeCheckbox)
             .first();
@@ -418,7 +421,9 @@ async function prepareSearchPage(
         const applyBtn = page.locator(selectors.applyFilters).first();
         // Ensure drawer is open
         if (!(await applyBtn.isVisible())) {
-          console.log("[dice] Apply button not visible. Re-opening drawer...");
+          console.log(
+            `[dice][${keyword}] Apply button not visible. Re-opening drawer...`
+          );
           const allFiltersBtn = page.locator(selectors.allFilters).first();
           await allFiltersBtn.click();
           await page.waitForTimeout(2000);
@@ -443,21 +448,23 @@ async function prepareSearchPage(
             { timeout: 30000 }
           );
           console.log(
-            "[dice] Filters applied successfully (verified via URL)."
+            `[dice][${keyword}] Filters applied successfully (verified via URL).`
           );
         } catch (e) {
           console.warn(
-            "[dice] Warning: URL did not update with expected filters within 30s. Checking if Apply button is still visible...",
+            `[dice][${keyword}] Warning: URL did not update with expected filters within 30s. Checking if Apply button is still visible...`,
             e
           );
           if (await applyBtn.isVisible()) {
-            console.log("[dice] Apply button still visible. Clicking again...");
+            console.log(
+              `[dice][${keyword}] Apply button still visible. Clicking again...`
+            );
             try {
               await applyBtn.scrollIntoViewIfNeeded();
               await applyBtn.evaluate((el) => (el as HTMLElement).click());
               await page.waitForTimeout(2000);
             } catch (retryErr) {
-              console.warn("[dice] Retry click failed:", retryErr);
+              console.warn(`[dice][${keyword}] Retry click failed:`, retryErr);
             }
           }
         }
@@ -492,12 +499,12 @@ async function collectListingRows(
         .waitForSelector(selectors.posted, { timeout: 5000 })
         .catch(() => {
           console.log(
-            "[dice] Timed out waiting for posted date selector. Proceeding anyway."
+            `[dice][${keyword}] Timed out waiting for posted date selector. Proceeding anyway.`
           );
         });
     }
   } catch {
-    console.log(`[dice] No results found for "${keyword}"`);
+    console.log(`[dice][${keyword}] No results found for "${keyword}"`);
     return [];
   }
 
@@ -590,13 +597,15 @@ async function collectListingRows(
       });
     }, selectors);
 
-    console.log(`[dice] Found ${rawJobs.length} cards on page ${pageIndex}`);
+    console.log(
+      `[dice][${keyword}] Found ${rawJobs.length} cards on page ${pageIndex}`
+    );
 
     // Debug empty posted dates
     const emptyPosted = rawJobs.filter((r) => !r.posted).length;
     if (emptyPosted > 0) {
       console.warn(
-        `[dice] Warning: ${emptyPosted}/${rawJobs.length} cards have empty posted dates.`
+        `[dice][${keyword}] Warning: ${emptyPosted}/${rawJobs.length} cards have empty posted dates.`
       );
       if (rawJobs.length > 0) {
         // console.log(`[dice] Sample Card HTML: ${rawJobs[0].html}`);
@@ -637,13 +646,13 @@ async function collectListingRows(
       if (lastValidRow) {
         if (!isPostedToday(lastValidRow.posted)) {
           console.log(
-            `[dice] Last valid job posted "${lastValidRow.posted}" is not from today. Stopping pagination.`
+            `[dice][${keyword}] Last valid job posted "${lastValidRow.posted}" is not from today. Stopping pagination.`
           );
           break;
         }
       } else {
         console.warn(
-          "[dice] Warning: All jobs in this batch have empty posted dates. Cannot determine if we should stop. Proceeding..."
+          `[dice][${keyword}] Warning: All jobs in this batch have empty posted dates. Cannot determine if we should stop. Proceeding...`
         );
       }
     }
@@ -726,7 +735,7 @@ async function evaluateDetailedJobs(
 
         if (foundFullTime && !foundContract) {
           console.log(
-            `[dice] Rejected "${role.title}" (${role.location}) – Reason: Employment Type is Full Time.`
+            `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: Employment Type is Full Time.`
           );
           rejectedLogger.log({
             title: role.title,
@@ -777,7 +786,7 @@ async function evaluateDetailedJobs(
           // 1. If Posted > 15 days -> REJECT
           if (postedDaysAgo > 15) {
             console.log(
-              `[dice] Rejected "${role.title}" (${role.location}) – Reason: Posted ${postedDaysAgo} days ago (> 15 days).`
+              `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: Posted ${postedDaysAgo} days ago (> 15 days).`
             );
             rejectedLogger.log({
               title: role.title,

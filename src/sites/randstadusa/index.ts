@@ -288,10 +288,10 @@ async function scrapeKeywordInNewPage(
 ): Promise<void> {
   const page = await context.newPage();
   try {
-    console.log(`[randstad] Searching for keyword "${keyword}"`);
+    console.log(`[randstad][${keyword}] Searching for keyword "${keyword}"`);
     await prepareSearchPage(page, site, keyword);
 
-    const roles = await collectRolesWithLoadMore(page, site, runDate);
+    const roles = await collectRolesWithLoadMore(page, site, runDate, keyword);
     let added = 0;
     for (const role of roles) {
       const jobKey = computeJobKey(role);
@@ -338,7 +338,8 @@ async function prepareSearchPage(
 async function collectRolesWithLoadMore(
   page: Page,
   site: SiteConfig,
-  runDate: Date
+  runDate: Date,
+  keyword: string
 ): Promise<JobRow[]> {
   const roles: JobRow[] = [];
   const maxLoads = Math.max(1, site.run.maxPages);
@@ -371,7 +372,7 @@ async function collectRolesWithLoadMore(
       const lastRow = allPageRows[allPageRows.length - 1];
       if (lastRow.posted !== todayLabel) {
         console.log(
-          `[randstad] Last item date '${lastRow.posted}' is not today. Stopping pagination.`
+          `[randstad][${keyword}] Last item date '${lastRow.posted}' is not today. Stopping pagination.`
         );
         stopPagination = true;
       }
@@ -403,7 +404,7 @@ async function collectRolesWithLoadMore(
     }
 
     const before = hits.length || domRows.length;
-    const loaded = await loadMore(page, before);
+    const loaded = await loadMore(page, before, keyword);
     if (!loaded) {
       break;
     }
@@ -424,7 +425,11 @@ async function collectRolesWithLoadMore(
   return roles;
 }
 
-async function loadMore(page: Page, previousCount: number): Promise<boolean> {
+async function loadMore(
+  page: Page,
+  previousCount: number,
+  keyword: string
+): Promise<boolean> {
   const loadMoreSelector = [
     'button:has-text("view more")',
     'button:has-text("view")',
@@ -444,7 +449,7 @@ async function loadMore(page: Page, previousCount: number): Promise<boolean> {
   try {
     await button.click({ delay: 30 });
   } catch (error) {
-    console.warn("[randstad] Load more click failed once.", error);
+    console.warn(`[randstad][${keyword}] Load more click failed once.`, error);
     return false;
   }
 
@@ -464,7 +469,7 @@ async function loadMore(page: Page, previousCount: number): Promise<boolean> {
     return true;
   } catch {
     console.warn(
-      "[randstad] Load more did not increase hit count; stopping pagination."
+      `[randstad][${keyword}] Load more did not increase hit count; stopping pagination.`
     );
     return false;
   }

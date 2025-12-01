@@ -271,8 +271,8 @@ async function scrapeKeywordInNewPage(
 ): Promise<void> {
   const page = await context.newPage();
   try {
-    console.log(`[kforce] Searching for keyword "${keyword}"`);
-    await prepareSearchPage(page, site);
+    console.log(`[kforce][${keyword}] Searching for keyword "${keyword}"`);
+    await prepareSearchPage(page, site, keyword);
     const rows = await scrapeKeyword(page, site, keyword, runDate, isBackfill);
     let added = 0;
     for (const row of rows) {
@@ -297,11 +297,15 @@ async function scrapeKeywordInNewPage(
   }
 }
 
-async function prepareSearchPage(page: Page, site: SiteConfig): Promise<void> {
+async function prepareSearchPage(
+  page: Page,
+  site: SiteConfig,
+  keyword: string
+): Promise<void> {
   await page.goto(site.search.url, { waitUntil: "domcontentloaded" });
   await acceptCookieConsent(page, site.cookieConsent);
-  await ensureJobTypeFacet(page, site);
-  await ensureNewestSort(page, site.search.selectors);
+  await ensureJobTypeFacet(page, site, keyword);
+  await ensureNewestSort(page, site.search.selectors, keyword);
 }
 
 async function scrapeKeyword(
@@ -346,7 +350,7 @@ async function scrapeKeyword(
     { timeout: 60000 }
   );
 
-  await ensureNewestSort(page, selectors);
+  await ensureNewestSort(page, selectors, keyword);
   return collectListingRows(page, site, keyword, runDate, isBackfill);
 }
 
@@ -393,7 +397,7 @@ async function collectListingRows(
 
     if (!isBackfill && site.search.postedTodayOnly && !pageHasToday) {
       console.log(
-        `[kforce] No results dated today on page ${pageIndex}. Skipping pagination for keyword "${keyword}".`
+        `[kforce][${keyword}] No results dated today on page ${pageIndex}. Skipping pagination for keyword "${keyword}".`
       );
       break;
     }
@@ -453,12 +457,12 @@ async function loadMoreWithRetry(
       const message = error instanceof Error ? error.message : String(error);
       if (attempt === 1) {
         console.warn(
-          `[kforce] Load more failed for keyword "${keyword}". Sleeping 30s and retrying once. Reason: ${message}`
+          `[kforce][${keyword}] Load more failed for keyword "${keyword}". Sleeping 30s and retrying once. Reason: ${message}`
         );
         await sleep(30);
       } else {
         console.error(
-          `[kforce] Load more failed again for keyword "${keyword}". Aborting pagination. Reason: ${message}`
+          `[kforce][${keyword}] Load more failed again for keyword "${keyword}". Aborting pagination. Reason: ${message}`
         );
         return false;
       }
@@ -644,7 +648,11 @@ function escapeCsv(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
-async function ensureJobTypeFacet(page: Page, site: SiteConfig): Promise<void> {
+async function ensureJobTypeFacet(
+  page: Page,
+  site: SiteConfig,
+  keyword: string
+): Promise<void> {
   const filters = site.search.jobTypeFilter;
   const facetSelector = site.search.selectors.jobTypeFacetOption;
   if (!filters || !filters.length || !facetSelector) {
@@ -661,7 +669,7 @@ async function ensureJobTypeFacet(page: Page, site: SiteConfig): Promise<void> {
     await option.waitFor({ state: "visible", timeout: 10000 });
   } catch (error) {
     console.warn(
-      `[kforce] Job type facet option "${targetLabel}" not found.`,
+      `[kforce][${keyword}] Job type facet option "${targetLabel}" not found.`,
       error
     );
     return;
@@ -704,7 +712,8 @@ async function isFacetSelected(option: Locator): Promise<boolean> {
 
 async function ensureNewestSort(
   page: Page,
-  selectors: SiteConfig["search"]["selectors"]
+  selectors: SiteConfig["search"]["selectors"],
+  keyword: string
 ): Promise<void> {
   const { sortToggle, sortOptionText } = selectors;
   if (!sortToggle || !sortOptionText) {
@@ -726,7 +735,9 @@ async function ensureNewestSort(
 
   const toggle = page.locator(sortToggle).first();
   if ((await toggle.count()) === 0) {
-    console.warn(`[kforce] Sort toggle not found using selector ${sortToggle}`);
+    console.warn(
+      `[kforce][${keyword}] Sort toggle not found using selector ${sortToggle}`
+    );
     return;
   }
 
@@ -742,7 +753,7 @@ async function ensureNewestSort(
     await option.waitFor({ state: "visible", timeout: 5000 });
   } catch (error) {
     console.warn(
-      `[kforce] Sort option "${sortOptionText}" did not appear.`,
+      `[kforce][${keyword}] Sort option "${sortOptionText}" did not appear.`,
       error
     );
     return;

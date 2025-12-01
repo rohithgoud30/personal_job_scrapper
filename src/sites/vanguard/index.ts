@@ -277,8 +277,8 @@ async function scrapeKeywordInNewPage(
 ): Promise<void> {
   const page = await context.newPage();
   try {
-    console.log(`[vanguard] Searching for keyword "${keyword}"`);
-    await prepareSearchPage(page, site);
+    console.log(`[vanguard][${keyword}] Searching for keyword "${keyword}"`);
+    await prepareSearchPage(page, site, keyword);
     const rows = await scrapeKeyword(page, site, keyword, runDate, isBackfill);
     let added = 0;
     for (const row of rows) {
@@ -303,7 +303,11 @@ async function scrapeKeywordInNewPage(
   }
 }
 
-async function prepareSearchPage(page: Page, site: SiteConfig): Promise<void> {
+async function prepareSearchPage(
+  page: Page,
+  site: SiteConfig,
+  keyword: string
+): Promise<void> {
   await page.goto(site.search.url, { waitUntil: "domcontentloaded" });
   await acceptCookieConsent(page, site.cookieConsent);
 }
@@ -345,14 +349,15 @@ async function scrapeKeyword(
     );
   }
 
-  await ensureNewestSort(page, site.search.selectors);
+  await ensureNewestSort(page, site.search.selectors, keyword);
 
   return collectListingRows(page, site, keyword, runDate, isBackfill);
 }
 
 async function ensureNewestSort(
   page: Page,
-  selectors: SiteConfig["search"]["selectors"]
+  selectors: SiteConfig["search"]["selectors"],
+  keyword: string
 ): Promise<void> {
   const { sortToggle, sortOptionText } = selectors;
   if (!sortToggle || !sortOptionText) {
@@ -362,7 +367,7 @@ async function ensureNewestSort(
   const selectElement = page.locator(sortToggle).first();
   if ((await selectElement.count()) === 0) {
     console.warn(
-      `[vanguard] Sort select not found using selector ${sortToggle}`
+      `[vanguard][${keyword}] Sort select not found using selector ${sortToggle}`
     );
     return;
   }
@@ -376,7 +381,7 @@ async function ensureNewestSort(
     await page.waitForLoadState("networkidle").catch(() => undefined);
   } catch (error) {
     console.warn(
-      `[vanguard] Failed to select sort option "${sortOptionText}"`,
+      `[vanguard][${keyword}] Failed to select sort option "${sortOptionText}"`,
       error
     );
   }

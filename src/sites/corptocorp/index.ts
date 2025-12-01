@@ -273,8 +273,8 @@ async function scrapeKeywordInNewPage(
 ): Promise<void> {
   const page = await context.newPage();
   try {
-    console.log(`[corptocorp] Searching for keyword "${keyword}"`);
-    await prepareSearchPage(page, site);
+    console.log(`[corptocorp][${keyword}] Searching for keyword "${keyword}"`);
+    await prepareSearchPage(page, site, keyword);
     const rows = await scrapeKeyword(page, site, keyword, runDate, isBackfill);
     let added = 0;
     for (const row of rows) {
@@ -299,20 +299,25 @@ async function scrapeKeywordInNewPage(
   }
 }
 
-async function prepareSearchPage(page: Page, site: SiteConfig): Promise<void> {
+async function prepareSearchPage(
+  page: Page,
+  site: SiteConfig,
+  keyword: string
+): Promise<void> {
   await page.goto(site.search.url, { waitUntil: "domcontentloaded" });
   // Initial popup check
-  await dismissPopup(page);
+  await dismissPopup(page, keyword);
 }
 
-async function dismissPopup(page: Page): Promise<void> {
+async function dismissPopup(page: Page, keyword: string): Promise<void> {
+  const logPrefix = `[corptocorp][${keyword}]`;
   try {
     // 1. The specific modal causing issues: #ipt-popup-modal
     // We will try to click the close button if visible, but we will ALWAYS force hide it afterwards.
     const modal = page.locator("#ipt-popup-modal");
     if (await modal.isVisible()) {
       console.log(
-        "[corptocorp] Detected #ipt-popup-modal. Attempting to dismiss..."
+        `${logPrefix} Detected #ipt-popup-modal. Attempting to dismiss...`
       );
       const closeBtn = modal
         .locator("button")
@@ -322,7 +327,7 @@ async function dismissPopup(page: Page): Promise<void> {
         .or(modal.getByText("Close"))
         .first();
       if (await closeBtn.isVisible()) {
-        console.log("[corptocorp] Found close button. Clicking...");
+        console.log(`${logPrefix} Found close button. Clicking...`);
         await closeBtn.click();
         await page.waitForTimeout(500);
       }
@@ -358,7 +363,7 @@ async function dismissPopup(page: Page): Promise<void> {
       .getByRole("button", { name: "NOT YET", exact: true })
       .or(page.getByText("NOT YET"));
     if (await notYetBtn.isVisible()) {
-      console.log('[corptocorp] Dismissing notification popup ("NOT YET")...');
+      console.log(`${logPrefix} Dismissing notification popup ("NOT YET")...`);
       await notYetBtn.click();
       await page.waitForTimeout(500);
     }
@@ -368,12 +373,12 @@ async function dismissPopup(page: Page): Promise<void> {
       .getByRole("button", { name: "Okay", exact: true })
       .or(page.getByText("Okay"));
     if (await okayBtn.isVisible()) {
-      console.log('[corptocorp] Dismissing Important Notice popup ("Okay")...');
+      console.log(`${logPrefix} Dismissing Important Notice popup ("Okay")...`);
       await okayBtn.click();
       await page.waitForTimeout(500);
     }
   } catch (e) {
-    console.warn("[corptocorp] Error in dismissPopup:", e);
+    console.warn(`${logPrefix} Error in dismissPopup:`, e);
   }
 }
 
@@ -405,7 +410,7 @@ async function scrapeKeyword(
     await page.waitForTimeout(2000);
   }
 
-  await ensureDateSort(page);
+  await ensureDateSort(page, keyword);
 
   return collectListingRows(page, site, keyword, runDate, isBackfill);
 }
@@ -712,7 +717,8 @@ function createSessionId(): string {
   return `session-${new Date().toISOString().replace(/[:.]/g, "-")}`;
 }
 
-async function ensureDateSort(page: Page): Promise<void> {
+async function ensureDateSort(page: Page, keyword: string): Promise<void> {
+  const logPrefix = `[corptocorp][${keyword}]`;
   try {
     // 3rd column is Date (index 2)
     const dateHeader = page.locator("table#ipt-posts-table thead th").nth(2);
@@ -722,18 +728,18 @@ async function ensureDateSort(page: Page): Promise<void> {
     const getClass = async () => (await dateHeader.getAttribute("class")) || "";
 
     if (!(await getClass()).includes("sorting_desc")) {
-      console.log("[corptocorp] Sorting by Date (Newest First)...");
+      console.log(`${logPrefix} Sorting by Date (Newest First)...`);
 
       // Retry loop for clicking
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-          await dismissPopup(page);
+          await dismissPopup(page, keyword);
           await dateHeader.click({ timeout: 5000 });
           await page.waitForTimeout(1000);
           break; // Success
         } catch (err) {
           console.warn(
-            `[corptocorp] Sort click attempt ${attempt} failed. Retrying...`
+            `${logPrefix} Sort click attempt ${attempt} failed. Retrying...`
           );
           await page.waitForTimeout(1000);
         }
@@ -743,13 +749,13 @@ async function ensureDateSort(page: Page): Promise<void> {
       if ((await getClass()).includes("sorting_asc")) {
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
-            await dismissPopup(page);
+            await dismissPopup(page, keyword);
             await dateHeader.click({ timeout: 5000 });
             await page.waitForTimeout(1000);
             break;
           } catch (err) {
             console.warn(
-              `[corptocorp] Sort (asc->desc) click attempt ${attempt} failed. Retrying...`
+              `${logPrefix} Sort (asc->desc) click attempt ${attempt} failed. Retrying...`
             );
             await page.waitForTimeout(1000);
           }
@@ -757,6 +763,6 @@ async function ensureDateSort(page: Page): Promise<void> {
       }
     }
   } catch (e) {
-    console.warn("[corptocorp] Failed to sort table:", e);
+    console.warn(`${logPrefix} Failed to sort table:`, e);
   }
 }
