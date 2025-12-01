@@ -490,18 +490,62 @@ async function collectListingRows(
   }
 
   // Wait for results
-  // Wait for results
   try {
     await page.waitForSelector(selectors.card, { timeout: 30000 });
-    // Also wait for at least one posted date to be visible to ensure hydration
+
+    // Retry logic for posted dates with intelligent validation
     if (selectors.posted) {
-      await page
-        .waitForSelector(selectors.posted, { timeout: 5000 })
-        .catch(() => {
-          console.log(
-            `[dice][${keyword}] Timed out waiting for posted date selector. Proceeding anyway.`
+      let datesLoaded = false;
+      const waitTime = 20000; // Wait 20 seconds for page to render
+
+      console.log(
+        `[dice][${keyword}] Waiting up to 20 seconds for posted dates to load...`
+      );
+
+      // Wait for the selector
+      const selectorFound = await page
+        .waitForSelector(selectors.posted, { timeout: waitTime })
+        .then(() => true)
+        .catch(() => false);
+
+      if (selectorFound) {
+        // Validate that dates are actually populated in the DOM
+        const hasPopulatedDates = await page.evaluate((sel) => {
+          const dateElements = document.querySelectorAll(sel);
+          if (dateElements.length === 0) return false;
+
+          // Check if at least some dates have non-empty text
+          let populatedCount = 0;
+          for (const el of Array.from(dateElements)) {
+            const text = (el as HTMLElement).innerText?.trim();
+            if (text && text.length > 0) {
+              populatedCount++;
+            }
+          }
+
+          // Consider dates loaded if at least 50% have content
+          return populatedCount >= dateElements.length * 0.5;
+        }, selectors.posted);
+
+        if (hasPopulatedDates) {
+          console.log(`[dice][${keyword}] Posted dates successfully loaded.`);
+          datesLoaded = true;
+        } else {
+          console.warn(
+            `[dice][${keyword}] Date selectors found but not populated.`
           );
-        });
+        }
+      } else {
+        console.warn(
+          `[dice][${keyword}] Posted date selector not found after 20s wait.`
+        );
+      }
+
+      if (!datesLoaded) {
+        console.warn(
+          `[dice][${keyword}] Warning: Posted dates did not load after 20s wait. Proceeding anyway.`
+        );
+      }
     }
   } catch {
     console.log(`[dice][${keyword}] No results found for "${keyword}"`);
