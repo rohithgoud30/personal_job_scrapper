@@ -89,6 +89,29 @@ All site-specific settings are in `config.json`:
 - Crawl delays
 - AI filtering rules
 
+> [!IMPORTANT]
+> You must create a `config.json` file in the root directory.
+
+**Example `config.json` structure for AI prompts:**
+
+```json
+{
+  "ai": {
+    "prompts": {
+      "titleFilter": [
+        "Your custom title filtering prompt here...",
+        "Another line of instructions..."
+      ],
+      "detailEvaluation": [
+        "Your custom detail evaluation prompt here...",
+        "Rules for visa, experience, etc..."
+      ]
+    }
+  }
+  // ... other site configs
+}
+```
+
 ## 🎯 Usage
 
 ### Run Individual Sites

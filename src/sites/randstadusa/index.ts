@@ -334,34 +334,52 @@ async function collectRolesWithLoadMore(
   while (true) {
     const hits = await extractHits(page);
     const domRows = await extractDomRows(page, site);
-    const mapped = hits
-      .map((hit) => mapHitToJobRow(hit, site, runDate))
-      .filter((row): row is JobRow => Boolean(row))
-      .map((row) =>
-        applyPostedDateFilter(row, runDate, todayLabel, requireToday)
-      )
-      .filter((row): row is JobRow => Boolean(row));
-    const combined = [
-      ...mapped,
-      ...domRows
-        .map((row) =>
-          applyPostedDateFilter(row, runDate, todayLabel, requireToday)
-        )
-        .filter((row): row is JobRow => Boolean(row)),
-    ];
 
-    const hasToday = combined.some((row) => row.posted === todayLabel);
-    if (requireToday && !hasToday) {
-      console.log(
-        "[randstad] No results dated today on this page; stopping pagination."
-      );
-      break;
+    // 1. Map hits to rows (raw)
+    const hitRows = hits
+      .map((hit) => mapHitToJobRow(hit, site, runDate))
+      .filter((row): row is JobRow => Boolean(row));
+
+    // 2. Combine with DOM rows
+    const allPageRows = [...hitRows, ...domRows];
+
+    // 3. Normalize dates in place
+    for (const row of allPageRows) {
+      const normalized = normalizeRandstadDate(row.posted, runDate);
+      if (normalized) row.posted = normalized;
     }
 
-    const unique = combined.filter(
+    // 4. Check stop condition (if sorted by date, last item not today => stop)
+    let stopPagination = false;
+    if (requireToday && allPageRows.length > 0) {
+      const lastRow = allPageRows[allPageRows.length - 1];
+      if (lastRow.posted !== todayLabel) {
+        console.log(
+          `[randstad] Last item date '${lastRow.posted}' is not today. Stopping pagination.`
+        );
+        stopPagination = true;
+      }
+    }
+
+    // 5. Filter and add valid rows
+    const validRows = allPageRows.filter((row) => {
+      if (requireToday && row.posted !== todayLabel) return false;
+      return true;
+    });
+
+    const unique = validRows.filter(
       (row) => !roles.some((r) => r.url === row.url)
     );
     roles.push(...unique);
+
+    if (stopPagination) {
+      break;
+    }
+
+    // If we didn't find any valid rows but didn't trigger stopPagination (e.g. empty page?),
+    // we might still want to stop if we require today and found nothing.
+    // But the stopPagination check above covers "last item is old".
+    // If page is empty, we rely on loadMore checks below.
 
     attempts += 1;
     if (attempts >= maxLoads) {
