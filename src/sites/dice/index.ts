@@ -26,6 +26,7 @@ import {
   TitleEntry,
   TitleFilterResult,
 } from "../../lib/aiEvaluator";
+import { rejectedLogger } from "../../lib/rejectedLogger";
 import { RunOptions } from "../types";
 
 interface SessionRole extends JobRow {
@@ -161,6 +162,15 @@ export async function runDiceSite(
         console.log(
           `[dice][AI][Title Reject #${rejectIndex}] "${row.title}" (${row.location}) – ${reason}`
         );
+        rejectedLogger.log({
+          title: row.title,
+          site: site.key,
+          url: row.url,
+          jd: "N/A",
+          reason: reason,
+          scraped_at: row.scraped_at,
+          type: "title",
+        });
         rejectIndex += 1;
       }
     }
@@ -718,6 +728,15 @@ async function evaluateDetailedJobs(
           console.log(
             `[dice] Rejected "${role.title}" (${role.location}) – Reason: Employment Type is Full Time.`
           );
+          rejectedLogger.log({
+            title: role.title,
+            site: site.key,
+            url: role.url,
+            jd: description,
+            reason: "Employment Type is Full Time",
+            scraped_at: role.scraped_at,
+            type: "detail",
+          });
           continue;
         }
       }
@@ -760,6 +779,15 @@ async function evaluateDetailedJobs(
             console.log(
               `[dice] Rejected "${role.title}" (${role.location}) – Reason: Posted ${postedDaysAgo} days ago (> 15 days).`
             );
+            rejectedLogger.log({
+              title: role.title,
+              site: site.key,
+              url: role.url,
+              jd: description,
+              reason: `Posted ${postedDaysAgo} days ago (> 15 days).`,
+              scraped_at: role.scraped_at,
+              type: "detail",
+            });
             continue;
           }
 
@@ -777,6 +805,15 @@ async function evaluateDetailedJobs(
                   updatedDaysAgo === -1 ? "Never" : updatedDaysAgo + " days ago"
                 }).`
               );
+              rejectedLogger.log({
+                title: role.title,
+                site: site.key,
+                url: role.url,
+                jd: description,
+                reason: `Posted ${postedDaysAgo} days ago and not updated recently`,
+                scraped_at: role.scraped_at,
+                type: "detail",
+              });
               continue;
             }
           }
@@ -807,6 +844,15 @@ async function evaluateDetailedJobs(
             detailResult.reasoning || "Model marked as not relevant."
           }`
         );
+        rejectedLogger.log({
+          title: role.title,
+          site: site.key,
+          url: role.url,
+          jd: description,
+          reason: detailResult.reasoning || "Model marked as not relevant.",
+          scraped_at: role.scraped_at,
+          type: "detail",
+        });
         continue;
       }
 

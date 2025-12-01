@@ -10,6 +10,7 @@ import { runVanguardSite } from "./sites/vanguard";
 import { runDiceSite } from "./sites/dice";
 import { RunOptions } from "./sites/types";
 import { getEasternDateParts } from "./lib/time";
+import { rejectedLogger } from "./lib/rejectedLogger";
 
 async function runSite(
   site: SiteConfig,
@@ -137,6 +138,14 @@ async function runAllSites(
       durationMs
     )}.`
   );
+
+  // Save rejected jobs log
+  const rejectedLogPath = path.join(
+    process.cwd(),
+    "data",
+    "rejected_jobs.xlsx"
+  );
+  rejectedLogger.save(rejectedLogPath);
 }
 
 function scheduleSites(

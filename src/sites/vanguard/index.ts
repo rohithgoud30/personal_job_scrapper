@@ -26,6 +26,7 @@ import {
   TitleEntry,
   TitleFilterResult,
 } from "../../lib/aiEvaluator";
+import { rejectedLogger } from "../../lib/rejectedLogger";
 import { RunOptions } from "../types";
 
 interface SessionRole extends JobRow {
@@ -163,6 +164,15 @@ export async function runVanguardSite(
         console.log(
           `[vanguard][AI][Title Reject #${rejectIndex}] "${row.title}" (${row.location}) – ${reason}`
         );
+        rejectedLogger.log({
+          title: row.title,
+          site: site.key,
+          url: row.url,
+          jd: "N/A",
+          reason: reason,
+          scraped_at: row.scraped_at,
+          type: "title",
+        });
         rejectIndex += 1;
       }
     }
@@ -198,6 +208,12 @@ export async function runVanguardSite(
     await saveSeenStore(outputPaths.seenFile, seen);
     console.log(
       `[vanguard] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`
+    );
+    rejectedLogger.save(
+      path.join(
+        outputPaths.directory,
+        `rejected_jobs_${outputPaths.dateFolder}.xlsx`
+      )
     );
   } finally {
     await context.close();
@@ -477,6 +493,15 @@ async function evaluateDetailedJobs(
             detailResult.reasoning || "Model marked as not relevant."
           }`
         );
+        rejectedLogger.log({
+          title: role.title,
+          site: site.key,
+          url: role.url,
+          jd: description,
+          reason: detailResult.reasoning || "Model marked as not relevant.",
+          scraped_at: role.scraped_at,
+          type: "detail",
+        });
         continue;
       }
 

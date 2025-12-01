@@ -26,6 +26,7 @@ import {
   TitleEntry,
   TitleFilterResult,
 } from "../../lib/aiEvaluator";
+import { rejectedLogger } from "../../lib/rejectedLogger";
 import { RunOptions } from "../types";
 
 const FALLBACK_SELECTORS = {
@@ -163,6 +164,15 @@ export async function runKforceSite(
         console.log(
           `[kforce][AI][Title Reject #${rejectIndex}] "${row.title}" (${row.location}) – ${reason}`
         );
+        rejectedLogger.log({
+          title: row.title,
+          site: site.key,
+          url: row.url,
+          jd: "N/A",
+          reason: reason,
+          scraped_at: row.scraped_at,
+          type: "title",
+        });
         rejectIndex += 1;
       }
     }
@@ -365,6 +375,15 @@ async function collectListingRows(
       }
 
       if (site.search.postedTodayOnly && !isPostedToday(row.posted, runDate)) {
+        rejectedLogger.log({
+          title: row.title,
+          site: site.key,
+          url: row.url,
+          jd: "N/A",
+          reason: "Not posted today (Local Filter)",
+          scraped_at: row.scraped_at,
+          type: "detail",
+        });
         continue;
       }
 
@@ -494,6 +513,15 @@ async function evaluateDetailedJobs(
             detailResult.reasoning || "Model marked as not relevant."
           }`
         );
+        rejectedLogger.log({
+          title: role.title,
+          site: site.key,
+          url: role.url,
+          jd: description,
+          reason: detailResult.reasoning || "Model marked as not relevant.",
+          scraped_at: role.scraped_at,
+          type: "detail",
+        });
         continue;
       }
 
