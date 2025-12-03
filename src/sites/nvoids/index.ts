@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { BrowserContext, Page, chromium } from "playwright";
+import { BrowserContext, Locator, Page, chromium } from "playwright";
 import { OutputConfig, SiteConfig } from "../../lib/config";
 import { acceptCookieConsent } from "../../lib/cookies";
 import { appendJobRows, JobRow } from "../../lib/csv";
@@ -34,24 +34,17 @@ interface SessionRole extends JobRow {
   keyword: string;
 }
 
-export async function runVanguardSite(
+export async function runNvoidsSite(
   site: SiteConfig,
   output: OutputConfig,
   options: RunOptions = {}
 ): Promise<void> {
   const resumeSessionId = options.resumeSessionId?.trim();
   const skipBatchDelay = Boolean(options.skipBatchPause);
-  const rawKeywords = options.keywords?.length
-    ? options.keywords
-    : site.search.criteria.searchKeywords;
-  const keywords = Array.isArray(rawKeywords)
-    ? rawKeywords
-    : rawKeywords
-    ? [rawKeywords]
-    : [];
+  const keywords = normalizeKeywords(site.search.criteria.searchKeywords);
 
   if (!resumeSessionId && !keywords.length) {
-    console.warn("[vanguard] No keywords configured. Skipping run.");
+    console.warn("[nvoids] No keywords configured. Skipping run.");
     return;
   }
 
@@ -66,7 +59,7 @@ export async function runVanguardSite(
     const located = await findSessionById(output, site, resumeSessionId);
     if (!located) {
       console.warn(
-        `[vanguard] Session ${resumeSessionId} not found under ${path.join(
+        `[nvoids] Session ${resumeSessionId} not found under ${path.join(
           output.root,
           site.host
         )}.`
@@ -96,16 +89,16 @@ export async function runVanguardSite(
     }
 
     console.log(
-      `[vanguard] Resuming AI-only run for session ${resumeSessionId} (date folder ${outputPaths.dateFolder}).`
+      `[nvoids] Resuming AI-only run for session ${resumeSessionId} (date folder ${outputPaths.dateFolder}).`
     );
   } else {
     const dateLabel = getEasternDateLabel(runDate);
     if (isBackfill) {
       console.log(
-        `[vanguard] Backfill mode enabled. Using run date ${dateLabel}.`
+        `[nvoids] Backfill mode enabled. Using run date ${dateLabel}.`
       );
     } else {
-      console.log(`[vanguard] Live run using current date ${dateLabel}.`);
+      console.log(`[nvoids] Live run using current date ${dateLabel}.`);
     }
     outputPaths = buildOutputPaths(output, site, runDate);
     const sessionId = createSessionId();
@@ -136,33 +129,33 @@ export async function runVanguardSite(
       );
 
       if (!staged.size) {
-        console.log("[vanguard] No new roles detected for this session.");
+        console.log("[nvoids] No new roles detected for this session.");
         return;
       }
 
       stagedArray = Array.from(staged.values());
     } else if (!stagedArray.length) {
       console.log(
-        `[vanguard] Session ${resumeSessionId} has no staged roles to evaluate.`
+        `[nvoids] Session ${resumeSessionId} has no staged roles to evaluate.`
       );
       return;
     }
 
     console.log(
-      `[vanguard][AI] Running title filter on ${stagedArray.length} staged roles...`
+      `[nvoids][AI] Running title filter on ${stagedArray.length} staged roles...`
     );
     await writeSessionRoles(sessionPaths, stagedArray);
 
     const { removalSet, reasons } = await filterTitlesWithAi(stagedArray);
     if (removalSet.size) {
-      console.log("[vanguard][AI] Title rejections:");
+      console.log("[nvoids][AI] Title rejections:");
       let rejectIndex = 1;
       for (const row of stagedArray) {
         const key = row.job_id ?? row.url;
         if (!removalSet.has(key)) continue;
         const reason = reasons.get(key) ?? "Marked irrelevant.";
         console.log(
-          `[vanguard][AI][Title Reject #${rejectIndex}] "${row.title}" (${row.location}) – ${reason}`
+          `[nvoids][AI][Title Reject #${rejectIndex}] "${row.title}" (${row.location}) – ${reason}`
         );
         rejectedLogger.log({
           title: row.title,
@@ -181,14 +174,14 @@ export async function runVanguardSite(
       (row) => !removalSet.has(row.job_id ?? row.url)
     );
     if (!filtered.length) {
-      console.log("[vanguard] AI filtered out all titles for this session.");
+      console.log("[nvoids] AI filtered out all titles for this session.");
       await writeSessionRoles(sessionPaths, filtered);
       return;
     }
 
     await writeSessionRoles(sessionPaths, filtered);
     console.log(
-      `[vanguard][AI] Title filter removed ${
+      `[nvoids][AI] Title filter removed ${
         stagedArray.length - filtered.length
       } roles. ${filtered.length} remain for detail evaluation.`
     );
@@ -200,14 +193,14 @@ export async function runVanguardSite(
       site
     );
     if (!acceptedRows.length) {
-      console.log("[vanguard] No jobs approved after detail evaluation.");
+      console.log("[nvoids] No jobs approved after detail evaluation.");
       return;
     }
 
     await appendJobRows(outputPaths.csvFile, acceptedRows);
     await saveSeenStore(outputPaths.seenFile, seen);
     console.log(
-      `[vanguard] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`
+      `[nvoids] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`
     );
     rejectedLogger.save(
       path.join(
@@ -234,7 +227,7 @@ async function scrapeKeywordsInBatches(
   const batchSize = env.keywordBatchSize;
   if (skipBatchDelay) {
     console.log(
-      "[vanguard] Batch wait disabled; running keyword batches back-to-back."
+      "[nvoids] Batch wait disabled; running keyword batches back-to-back."
     );
   }
 
@@ -257,10 +250,11 @@ async function scrapeKeywordsInBatches(
 
     const hasMoreBatches = i + batchSize < keywords.length;
     if (!isBackfill && hasMoreBatches && !skipBatchDelay) {
-      console.log(
-        "[vanguard] Sleeping 30s before next keyword batch (robots crawl-delay)."
-      );
-      await sleep(30);
+      const delay = site.run.keywordDelaySeconds ?? 0;
+      if (delay > 0) {
+        console.log(`[nvoids] Sleeping ${delay}s before next keyword batch.`);
+        await sleep(delay);
+      }
     }
   }
 }
@@ -277,7 +271,7 @@ async function scrapeKeywordInNewPage(
 ): Promise<void> {
   const page = await context.newPage();
   try {
-    console.log(`[vanguard][${keyword}] Searching for keyword "${keyword}"`);
+    console.log(`[nvoids][${keyword}] Searching for keyword "${keyword}"`);
     await prepareSearchPage(page, site, keyword);
     const rows = await scrapeKeyword(page, site, keyword, runDate, isBackfill);
     let added = 0;
@@ -294,10 +288,10 @@ async function scrapeKeywordInNewPage(
       added += 1;
     }
     console.log(
-      `[vanguard] Keyword "${keyword}": scraped ${rows.length}, staged ${added}`
+      `[nvoids] Keyword "${keyword}": scraped ${rows.length}, staged ${added}`
     );
   } catch (error) {
-    console.error(`[vanguard] Failed keyword "${keyword}"`, error);
+    console.error(`[nvoids] Failed keyword "${keyword}"`, error);
   } finally {
     await page.close();
   }
@@ -309,7 +303,7 @@ async function prepareSearchPage(
   keyword: string
 ): Promise<void> {
   await page.goto(site.search.url, { waitUntil: "domcontentloaded" });
-  await acceptCookieConsent(page, site.cookieConsent);
+  await page.waitForTimeout(1000);
 }
 
 async function scrapeKeyword(
@@ -319,72 +313,21 @@ async function scrapeKeyword(
   runDate: Date,
   isBackfill: boolean
 ): Promise<JobRow[]> {
-  const selectors = site.search.selectors;
-  const keywordInput = page.locator(selectors.keywords).first();
+  const searchInput = page.locator(site.search.selectors.keywords);
+  const submitButton = page.locator(site.search.selectors.submit);
 
-  if ((await keywordInput.count()) === 0) {
-    throw new Error(
-      `Keyword input not found using selector ${selectors.keywords}`
+  if ((await searchInput.count()) === 0) {
+    console.warn(
+      `[nvoids][${keyword}] Search input not found. Skipping keyword.`
     );
+    return [];
   }
 
-  await keywordInput.fill("");
-  await keywordInput.type(keyword, { delay: 20 });
-
-  const submitButton = page.locator(selectors.submit).first();
-  if ((await submitButton.count()) === 0) {
-    throw new Error(
-      `Submit button not found using selector ${selectors.submit}`
-    );
-  }
-
-  await submitButton.click({ delay: 50, noWaitAfter: true });
-  await page.waitForLoadState("networkidle").catch(() => undefined);
-
-  if (selectors.card) {
-    await page.waitForFunction(
-      ({ selector }) => document.querySelectorAll(selector).length > 0,
-      { selector: selectors.card },
-      { timeout: 60000 }
-    );
-  }
-
-  await ensureNewestSort(page, site.search.selectors, keyword);
+  await searchInput.fill(keyword);
+  await submitButton.click();
+  await page.waitForTimeout(2000);
 
   return collectListingRows(page, site, keyword, runDate, isBackfill);
-}
-
-async function ensureNewestSort(
-  page: Page,
-  selectors: SiteConfig["search"]["selectors"],
-  keyword: string
-): Promise<void> {
-  const { sortToggle, sortOptionText } = selectors;
-  if (!sortToggle || !sortOptionText) {
-    return;
-  }
-
-  const selectElement = page.locator(sortToggle).first();
-  if ((await selectElement.count()) === 0) {
-    console.warn(
-      `[vanguard][${keyword}] Sort select not found using selector ${sortToggle}`
-    );
-    return;
-  }
-
-  // Check current value/text if possible, but for select it's easier to just select.
-  // Vanguard "Newest" has value "open_date".
-  // We can try selecting by label "Newest" as configured.
-  try {
-    await selectElement.selectOption({ label: sortOptionText });
-    // Wait for reload/network idle
-    await page.waitForLoadState("networkidle").catch(() => undefined);
-  } catch (error) {
-    console.warn(
-      `[vanguard][${keyword}] Failed to select sort option "${sortOptionText}"`,
-      error
-    );
-  }
 }
 
 async function collectListingRows(
@@ -394,68 +337,110 @@ async function collectListingRows(
   runDate: Date,
   isBackfill: boolean
 ): Promise<JobRow[]> {
-  const selectors = site.search.selectors;
-  if (!selectors.card) {
-    return [];
-  }
-  const cards = page.locator(selectors.card);
   const rows: JobRow[] = [];
-  let processedCount = 0;
   let pageIndex = 1;
 
   while (true) {
-    const totalCards = await cards.count();
-    for (let index = processedCount; index < totalCards; index += 1) {
-      const card = cards.nth(index);
-      const row = await extractJobRow(card, site);
-      if (!row) {
+    await page
+      .waitForSelector("table tbody tr", { timeout: 10000 })
+      .catch(() => {});
+
+    const rowElements = page.locator("table tbody tr");
+    const count = await rowElements.count();
+
+    if (count === 0) {
+      console.log(
+        `[nvoids][${keyword}] No results found on page ${pageIndex}. Stopping.`
+      );
+      break;
+    }
+
+    let pageHasToday = !site.search.postedTodayOnly;
+
+    for (let i = 0; i < count; i++) {
+      const rowEl = rowElements.nth(i);
+      const row = await extractJobRow(rowEl, site);
+
+      if (!row) continue;
+
+      if (site.search.postedTodayOnly && !isPostedToday(row.posted, runDate)) {
         continue;
       }
+
+      pageHasToday = true;
       rows.push(row);
     }
 
-    processedCount = totalCards;
-    if (pageIndex >= site.run.maxPages) {
-      break;
-    }
-
-    if (selectors.next) {
-      const nextButton = page.locator(selectors.next).first();
-      const canLoadMore = await nextButton.isVisible();
-      if (!canLoadMore) {
-        break;
-      }
-
-      // Check if button is active/clickable if needed, but isVisible is a good start
-      // Sometimes "Next" exists but is disabled.
-      // The selector `a[aria-label='Go to the next page of results.']` should be fine.
-
-      await nextButton.click();
-      await page.waitForFunction(
-        ({ selector, previousCount: prev }) =>
-          document.querySelectorAll(selector).length > 0, // Just wait for load, or maybe wait for count change if it's SPA?
-        { selector: selectors.card, previousCount: processedCount },
-        { timeout: 60000 }
+    if (!isBackfill && site.search.postedTodayOnly && !pageHasToday) {
+      console.log(
+        `[nvoids][${keyword}] No results dated today on page ${pageIndex}. Stopping pagination.`
       );
-      // Vanguard seems to be a full page reload or at least significant DOM change.
-      // Let's wait for network idle to be safe.
-      await page.waitForLoadState("networkidle").catch(() => undefined);
-
-      // Reset processedCount if it's a new page (pagination) vs infinite scroll
-      // Vanguard looks like pagination (page 1, page 2...).
-      // If it's pagination, we should process all cards on the new page.
-      // So processedCount should be 0 for the new page loop?
-      // Wait, `cards` locator is live. If the page changes, `cards` refers to new elements.
-      // So yes, reset processedCount to 0.
-      processedCount = 0;
-    } else {
       break;
     }
 
-    pageIndex += 1;
+    if (pageIndex >= site.run.maxPages) {
+      console.log(
+        `[nvoids][${keyword}] Reached max pages (${site.run.maxPages}). Stopping.`
+      );
+      break;
+    }
+
+    // Check for Next button
+    const nextSelector = site.search.selectors.next ?? "a:has-text('Next')";
+    const nextBtn = page.locator(nextSelector);
+    if (await nextBtn.isVisible()) {
+      await nextBtn.click();
+      await page.waitForTimeout(2000);
+      pageIndex++;
+    } else {
+      console.log(
+        `[nvoids][${keyword}] No more pages available. Stopping pagination.`
+      );
+      break;
+    }
   }
 
   return rows;
+}
+
+async function extractJobRow(
+  row: Locator,
+  site: SiteConfig
+): Promise<JobRow | null> {
+  try {
+    const titleLink = row.locator("td:nth-child(1) a").first();
+    if ((await titleLink.count()) === 0) return null;
+
+    const rawTitle = (await titleLink.innerText()).trim();
+    const href = (await titleLink.getAttribute("href")) ?? "";
+    const url = href ? new URL(href, site.search.url).toString() : "";
+
+    if (site.disallowPatterns.some((pattern) => url.includes(pattern))) {
+      return null;
+    }
+
+    const locationCell = row.locator("td:nth-child(2)");
+    const locationText = await locationCell.innerText().catch(() => "");
+
+    const postedCell = row.locator("td:nth-child(3)");
+    const postedText = await postedCell.innerText().catch(() => "");
+
+    // Extract job ID from URL
+    const jobId = extractJobId(url);
+
+    return {
+      site: site.key,
+      title: rawTitle,
+      company: "Nvoids", // Aggregator
+      location: locationText.trim(),
+      posted: postedText.trim(),
+      url,
+      job_id: jobId ?? undefined,
+      scraped_at: getEasternTimeLabel(),
+    };
+  } catch (e) {
+    return null;
+  }
 }
 
 async function evaluateDetailedJobs(
@@ -473,12 +458,14 @@ async function evaluateDetailedJobs(
         waitUntil: "domcontentloaded",
         timeout: 60000,
       });
-      let description = await extractDescription(page, site);
+      let description = await extractDescription(page);
+
       console.log(
-        `[vanguard][AI] Detail candidate #${i + 1}/${roles.length} "${
+        `[nvoids][AI] Detail candidate #${i + 1}/${roles.length} "${
           role.title
-        }" (${role.location}) – description length ${description.length} chars.`
+        }" – description length ${description.length} chars.`
       );
+
       const detailResult = await evaluateJobDetail(
         {
           title: role.title,
@@ -492,9 +479,7 @@ async function evaluateDetailedJobs(
 
       if (!detailResult.accepted) {
         console.log(
-          `[vanguard][AI] Rejected "${role.title}" (${
-            role.location
-          }) – Reason: ${
+          `[nvoids][AI] Rejected "${role.title}" – Reason: ${
             detailResult.reasoning || "Model marked as not relevant."
           }`
         );
@@ -519,7 +504,7 @@ async function evaluateDetailedJobs(
       accepted.push(role);
     } catch (error) {
       console.error(
-        `[vanguard] Failed to evaluate detail for ${role.url}`,
+        `[nvoids] Failed to evaluate detail for ${role.url}`,
         error
       );
     } finally {
@@ -528,41 +513,31 @@ async function evaluateDetailedJobs(
   }
 
   console.log(
-    `[vanguard][AI] Detail evaluation accepted ${accepted.length} roles out of ${roles.length}.`
+    `[nvoids][AI] Detail evaluation accepted ${accepted.length} roles out of ${roles.length}.`
   );
   return accepted;
 }
 
-export async function extractDescription(
-  page: Page,
-  site: SiteConfig
-): Promise<string> {
-  // Use a fallback if no specific description selector is configured,
-  // but we know Vanguard has one in config.
-  const selector = site.search.selectors.card
-    ? "div.fusion-tabs div.fusion-tab-content" // Fallback/Default if not in config, but it IS in config.
-    : "body";
-
-  // Actually, let's just use what's in config or a hardcoded fallback for now
-  // since SearchSelectors interface might not have 'description' explicitly typed
-  // (it's not in the interface I saw earlier, wait let me check interface).
-  // Interface SearchSelectors in config.ts does NOT have 'description'.
-  // So I can't access site.search.selectors.description directly if typescript checks it.
-  // I should add it to the interface or just use a hardcoded selector here since this is site-specific code.
-  // But wait, I put it in config.json.
-  // Let's check config.ts again.
-
-  const descriptionSelector = "div.fusion-tabs div.fusion-tab-content";
-
-  const locator = page.locator(descriptionSelector).first();
-  if (await locator.count()) {
-    try {
-      const text = await locator.innerText({ timeout: 5000 });
-      if (text.trim()) {
-        return text.trim();
+export async function extractDescription(page: Page): Promise<string> {
+  // Generic selectors for job description
+  const selectors = [
+    ".entry-content",
+    ".job-content",
+    "article",
+    "main",
+    "body",
+  ];
+  for (const selector of selectors) {
+    const locator = page.locator(selector).first();
+    if (await locator.count()) {
+      try {
+        const text = await locator.innerText({ timeout: 5000 });
+        if (text.trim()) {
+          return text.trim();
+        }
+      } catch (_) {
+        continue;
       }
-    } catch (_) {
-      // ignore
     }
   }
   return await page.content();
@@ -618,75 +593,77 @@ async function writeSessionRoles(
 }
 
 function escapeCsv(value: string): string {
-  if (!value) {
-    return "";
-  }
-  if (!value.includes(",")) {
-    return value;
-  }
+  if (!value) return "";
+  if (!value.includes(",")) return value;
   return `"${value.replace(/"/g, '""')}"`;
 }
 
-function extractJobId(href: string): string | null {
-  // Example: /job/22438637/android-technical-lead-ii-charlotte-nc...
-  const match = href.match(/job\/(\d+)\//i);
+function normalizeKeywords(raw: string | string[]): string[] {
+  const candidates = Array.isArray(raw) ? raw : [raw];
+  return Array.from(
+    new Set(candidates.map((keyword) => keyword.trim()).filter(Boolean))
+  );
+}
+
+function isPostedToday(posted: string, referenceDate: Date): boolean {
+  // Nvoids uses UTC/GMT+0 timezone with format: "HH:MM AM/PM DD-Mon-YY"
+  // Examples: "03:18 AM 02-Dec-25", "11:54 PM 01-Dec-25"
+
+  // Get today's date in UTC
+  const todayUTC = new Date(referenceDate);
+  const utcYear = todayUTC.getUTCFullYear();
+  const utcMonth = todayUTC.getUTCMonth() + 1; // 0-indexed
+  const utcDay = todayUTC.getUTCDate();
+
+  // Parse nvoids format: "HH:MM AM/PM DD-Mon-YY"
+  const dateMatch = posted.match(/(\d{2})-([A-Za-z]{3})-(\d{2})/);
+  if (dateMatch) {
+    const [_, day, monthStr, year] = dateMatch;
+
+    // Convert month string to number
+    const monthMap: { [key: string]: number } = {
+      Jan: 1,
+      Feb: 2,
+      Mar: 3,
+      Apr: 4,
+      May: 5,
+      Jun: 6,
+      Jul: 7,
+      Aug: 8,
+      Sep: 9,
+      Oct: 10,
+      Nov: 11,
+      Dec: 12,
+    };
+
+    const month = monthMap[monthStr];
+    const fullYear = 2000 + parseInt(year); // Convert "25" to 2025
+
+    return (
+      parseInt(day) === utcDay && month === utcMonth && fullYear === utcYear
+    );
+  }
+
+  // Fallback: try parsing as MM/DD/YYYY format (legacy support)
+  const slashMatch = posted.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (slashMatch) {
+    const [_, m, d, y] = slashMatch;
+    const formatted = `${m.padStart(2, "0")}/${d.padStart(2, "0")}/${y}`;
+    const todayFormatted = `${String(utcMonth).padStart(2, "0")}/${String(
+      utcDay
+    ).padStart(2, "0")}/${utcYear}`;
+    return formatted === todayFormatted;
+  }
+
+  return false;
+}
+
+function extractJobId(url: string): string | null {
+  // URL structure: https://jobs.nvoids.com/job_details.jsp?id=2961497&uid=...
+  const match = url.match(/[?&]id=(\d+)/);
   return match ? match[1] : null;
 }
 
-async function extractJobRow(
-  card: Page["locator"] extends (...args: any[]) => infer R ? R : never,
-  site: SiteConfig
-): Promise<JobRow | null> {
-  const selectors = site.search.selectors;
-  if (!selectors.title) return null;
-
-  const titleLink = card.locator(selectors.title).first();
-
-  if ((await titleLink.count()) === 0) {
-    return null;
-  }
-
-  const rawTitle = (await titleLink.innerText()).trim();
-  const href = (await titleLink.getAttribute("href")) ?? "";
-  const url = new URL(href, site.search.url).toString();
-  if (site.disallowPatterns.some((pattern) => url.includes(pattern))) {
-    return null;
-  }
-
-  let locationText = "";
-  if (selectors.location) {
-    locationText = (
-      await card
-        .locator(selectors.location)
-        .first()
-        .innerText()
-        .catch(() => "")
-    ).trim();
-  }
-
-  let postedText = "";
-  if (selectors.posted) {
-    postedText = (
-      await card
-        .locator(selectors.posted)
-        .first()
-        .innerText()
-        .catch(() => "")
-    ).trim();
-  }
-
-  return {
-    site: site.key,
-    title: rawTitle,
-    company: "Vanguard",
-    location: locationText,
-    posted: postedText,
-    url,
-    job_id: extractJobId(href) ?? undefined,
-    scraped_at: getEasternTimeLabel(),
-  };
-}
-
 function createSessionId(): string {
-  return `session_${Date.now()}`;
+  return `session-${new Date().toISOString().replace(/[:.]/g, "-")}`;
 }

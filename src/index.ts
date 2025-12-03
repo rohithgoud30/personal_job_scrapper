@@ -8,8 +8,10 @@ import { runRandstadSite } from "./sites/randstadusa";
 import { runCorpToCorpSite } from "./sites/corptocorp";
 import { runVanguardSite } from "./sites/vanguard";
 import { runDiceSite } from "./sites/dice";
+import { runNvoidsSite } from "./sites/nvoids";
 import { RunOptions } from "./sites/types";
 import { getEasternDateParts } from "./lib/time";
+import { rejectedLogger } from "./lib/rejectedLogger";
 
 async function runSite(
   site: SiteConfig,
@@ -31,6 +33,9 @@ async function runSite(
       break;
     case "dice":
       await runDiceSite(site, output, options);
+      break;
+    case "nvoids":
+      await runNvoidsSite(site, output, options);
       break;
     default:
       console.warn(`No runner implemented for site key: ${site.key}`);
@@ -137,6 +142,14 @@ async function runAllSites(
       durationMs
     )}.`
   );
+
+  // Save rejected jobs log
+  const rejectedLogPath = path.join(
+    process.cwd(),
+    "data",
+    "rejected_jobs.xlsx"
+  );
+  rejectedLogger.save(rejectedLogPath);
 }
 
 function scheduleSites(

@@ -26,6 +26,7 @@ import {
   TitleEntry,
   TitleFilterResult,
 } from "../../lib/aiEvaluator";
+import { rejectedLogger } from "../../lib/rejectedLogger";
 import { RunOptions } from "../types";
 
 interface SessionRole extends JobRow {
@@ -177,6 +178,15 @@ export async function runRandstadSite(
         console.log(
           `[randstad][AI][Title Reject #${rejectIndex}] "${row.title}" (${row.location}) – ${reason}`
         );
+        rejectedLogger.log({
+          title: row.title,
+          site: site.key,
+          url: row.url,
+          jd: "N/A",
+          reason: reason,
+          scraped_at: row.scraped_at,
+          type: "title",
+        });
         rejectIndex += 1;
       }
     }
@@ -209,6 +219,12 @@ export async function runRandstadSite(
     await saveSeenStore(outputPaths.seenFile, seen);
     console.log(
       `[randstad] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`
+    );
+    rejectedLogger.save(
+      path.join(
+        outputPaths.directory,
+        `rejected_jobs_${outputPaths.dateFolder}.xlsx`
+      )
     );
   } finally {
     await context.close();
@@ -272,10 +288,10 @@ async function scrapeKeywordInNewPage(
 ): Promise<void> {
   const page = await context.newPage();
   try {
-    console.log(`[randstad] Searching for keyword "${keyword}"`);
+    console.log(`[randstad][${keyword}] Searching for keyword "${keyword}"`);
     await prepareSearchPage(page, site, keyword);
 
-    const roles = await collectRolesWithLoadMore(page, site, runDate);
+    const roles = await collectRolesWithLoadMore(page, site, runDate, keyword);
     let added = 0;
     for (const role of roles) {
       const jobKey = computeJobKey(role);
@@ -322,7 +338,8 @@ async function prepareSearchPage(
 async function collectRolesWithLoadMore(
   page: Page,
   site: SiteConfig,
-  runDate: Date
+  runDate: Date,
+  keyword: string
 ): Promise<JobRow[]> {
   const roles: JobRow[] = [];
   const maxLoads = Math.max(1, site.run.maxPages);
@@ -334,34 +351,52 @@ async function collectRolesWithLoadMore(
   while (true) {
     const hits = await extractHits(page);
     const domRows = await extractDomRows(page, site);
-    const mapped = hits
-      .map((hit) => mapHitToJobRow(hit, site, runDate))
-      .filter((row): row is JobRow => Boolean(row))
-      .map((row) =>
-        applyPostedDateFilter(row, runDate, todayLabel, requireToday)
-      )
-      .filter((row): row is JobRow => Boolean(row));
-    const combined = [
-      ...mapped,
-      ...domRows
-        .map((row) =>
-          applyPostedDateFilter(row, runDate, todayLabel, requireToday)
-        )
-        .filter((row): row is JobRow => Boolean(row)),
-    ];
 
-    const hasToday = combined.some((row) => row.posted === todayLabel);
-    if (requireToday && !hasToday) {
-      console.log(
-        "[randstad] No results dated today on this page; stopping pagination."
-      );
-      break;
+    // 1. Map hits to rows (raw)
+    const hitRows = hits
+      .map((hit) => mapHitToJobRow(hit, site, runDate))
+      .filter((row): row is JobRow => Boolean(row));
+
+    // 2. Combine with DOM rows
+    const allPageRows = [...hitRows, ...domRows];
+
+    // 3. Normalize dates in place
+    for (const row of allPageRows) {
+      const normalized = normalizeRandstadDate(row.posted, runDate);
+      if (normalized) row.posted = normalized;
     }
 
-    const unique = combined.filter(
+    // 4. Check stop condition (if sorted by date, last item not today => stop)
+    let stopPagination = false;
+    if (requireToday && allPageRows.length > 0) {
+      const lastRow = allPageRows[allPageRows.length - 1];
+      if (lastRow.posted !== todayLabel) {
+        console.log(
+          `[randstad][${keyword}] Last item date '${lastRow.posted}' is not today. Stopping pagination.`
+        );
+        stopPagination = true;
+      }
+    }
+
+    // 5. Filter and add valid rows
+    const validRows = allPageRows.filter((row) => {
+      if (requireToday && row.posted !== todayLabel) return false;
+      return true;
+    });
+
+    const unique = validRows.filter(
       (row) => !roles.some((r) => r.url === row.url)
     );
     roles.push(...unique);
+
+    if (stopPagination) {
+      break;
+    }
+
+    // If we didn't find any valid rows but didn't trigger stopPagination (e.g. empty page?),
+    // we might still want to stop if we require today and found nothing.
+    // But the stopPagination check above covers "last item is old".
+    // If page is empty, we rely on loadMore checks below.
 
     attempts += 1;
     if (attempts >= maxLoads) {
@@ -369,7 +404,7 @@ async function collectRolesWithLoadMore(
     }
 
     const before = hits.length || domRows.length;
-    const loaded = await loadMore(page, before);
+    const loaded = await loadMore(page, before, keyword);
     if (!loaded) {
       break;
     }
@@ -390,7 +425,11 @@ async function collectRolesWithLoadMore(
   return roles;
 }
 
-async function loadMore(page: Page, previousCount: number): Promise<boolean> {
+async function loadMore(
+  page: Page,
+  previousCount: number,
+  keyword: string
+): Promise<boolean> {
   const loadMoreSelector = [
     'button:has-text("view more")',
     'button:has-text("view")',
@@ -410,7 +449,7 @@ async function loadMore(page: Page, previousCount: number): Promise<boolean> {
   try {
     await button.click({ delay: 30 });
   } catch (error) {
-    console.warn("[randstad] Load more click failed once.", error);
+    console.warn(`[randstad][${keyword}] Load more click failed once.`, error);
     return false;
   }
 
@@ -430,7 +469,7 @@ async function loadMore(page: Page, previousCount: number): Promise<boolean> {
     return true;
   } catch {
     console.warn(
-      "[randstad] Load more did not increase hit count; stopping pagination."
+      `[randstad][${keyword}] Load more did not increase hit count; stopping pagination.`
     );
     return false;
   }
@@ -825,12 +864,19 @@ async function evaluateDetailedJobs(
 
       if (!detailResult.accepted) {
         console.log(
-          `[randstad][AI] Rejected "${role.title}" (${
-            role.location
-          }) – Reason: ${
+          `[randstad][AI] Rejected "${role.title}" – Reason: ${
             detailResult.reasoning || "Model marked as not relevant."
           }`
         );
+        rejectedLogger.log({
+          title: role.title,
+          site: site.key,
+          url: role.url,
+          jd: description,
+          reason: detailResult.reasoning || "Model marked as not relevant.",
+          scraped_at: role.scraped_at,
+          type: "detail",
+        });
         continue;
       }
 
