@@ -194,25 +194,60 @@ export async function evaluateJobDetail(
   const systemPrompt = Array.isArray(prompts) ? prompts.join(" ") : prompts;
 
   const modelName = env.aiDetailEvalModel || "gemini-2.0-flash-exp";
-  const model = getVertexModel(modelName, systemPrompt);
+  // We don't instantiate the model here anymore because we might switch models/clients in the loop.
 
   const userContent = `Title: ${payload.title}\nCompany: ${payload.company}\nLocation: ${payload.location}\nURL: ${payload.url}\nDescription:\n${payload.description}`;
 
   let lastError: unknown;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const result = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: userContent }] }],
-      });
+      // Fallback to OpenAI (glm-4.5-air) on any retry (attempt 2+)
+      // This handles token limits, timeouts, or any other Vertex AI errors.
+      const useFallback = attempt >= 2;
 
-      const responseText =
-        result.response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-      const parsed = JSON.parse(responseText);
-      return {
-        accepted: Boolean(parsed.accepted),
-        reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : "",
-      };
+      if (useFallback) {
+        console.log(
+          `[AI] Attempt ${attempt}: Using fallback model glm-4.5-air...`
+        );
+        const client = getOpenAiClient();
+        const completion = await client.chat.completions.create({
+          model: "glm-4.5-air",
+          temperature: 0,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userContent },
+          ],
+        });
+
+        const message = completion.choices[0]?.message?.content ?? "{}";
+        const parsed = JSON.parse(message);
+        return {
+          accepted: Boolean(parsed.accepted),
+          reasoning:
+            typeof parsed.reasoning === "string" ? parsed.reasoning : "",
+        };
+      } else {
+        // Use Primary Vertex Model
+        console.log(
+          `[AI] Attempt ${attempt}: Using primary model ${modelName}...`
+        );
+        const model = getVertexModel(modelName, systemPrompt);
+        const result = await model.generateContent({
+          contents: [{ role: "user", parts: [{ text: userContent }] }],
+        });
+
+        const responseText =
+          result.response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+        const parsed = JSON.parse(responseText);
+        return {
+          accepted: Boolean(parsed.accepted),
+          reasoning:
+            typeof parsed.reasoning === "string" ? parsed.reasoning : "",
+        };
+      }
     } catch (error) {
+      console.warn(`[AI] Attempt ${attempt} failed:`, error);
       lastError = error;
       if (attempt < 3) {
         await sleepBackoff(attempt);
