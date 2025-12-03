@@ -389,7 +389,7 @@
           "card": "table tbody tr",
           "title": "td:nth-child(1) a",
           "posted": "td:nth-child(2)",
-          "next": "a:has-text('Next')"
+          "next": "a:has-text('Next'):not(table *)"
         }
       },
       "run": {

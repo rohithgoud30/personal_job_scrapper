@@ -386,7 +386,8 @@ async function collectListingRows(
     }
 
     // Check for Next button
-    const nextSelector = site.search.selectors.next ?? "a:has-text('Next')";
+    const nextSelector =
+      site.search.selectors.next ?? "a:has-text('Next'):not(table *)";
     const nextBtn = page.locator(nextSelector);
     if (await nextBtn.isVisible()) {
       await nextBtn.click();
