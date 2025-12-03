@@ -7,6 +7,8 @@ export const env = {
   aiBaseUrl: process.env.AI_BASE_URL ?? "https://api.openai.com/v1/",
   aiTitleFilterModel: process.env.AI_TITLE_FILTER_MODEL ?? "gpt-3.5-turbo",
   aiDetailEvalModel: process.env.AI_DETAIL_EVAL_MODEL ?? "gpt-4",
+  fallbackAiDetailEvalModel:
+    process.env.FALLBACK_AI_DETAIL_EVAL_MODEL ?? "glm-4.5-Air",
   keywordBatchSize: Number(process.env.KEYWORD_BATCH_SIZE ?? "5") || 5,
   runDateOverride: (process.env.TEST_RUN_DATE ?? "").trim(),
 };

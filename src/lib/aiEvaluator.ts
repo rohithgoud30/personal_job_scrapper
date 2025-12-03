@@ -207,11 +207,13 @@ export async function evaluateJobDetail(
 
       if (useFallback) {
         console.log(
-          `[AI] Attempt ${attempt}: Using fallback model glm-4.5-air...`
+          `[AI] Attempt ${attempt}: Using fallback model ${
+            env.fallbackAiDetailEvalModel || "glm-4.5-air"
+          }...`
         );
         const client = getOpenAiClient();
         const completion = await client.chat.completions.create({
-          model: "glm-4.5-air",
+          model: env.fallbackAiDetailEvalModel || "glm-4.5-air",
           temperature: 0,
           response_format: { type: "json_object" },
           messages: [
