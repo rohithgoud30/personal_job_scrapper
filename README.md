@@ -131,7 +131,11 @@ npm start -- --site=kforce
 npm start -- --site=randstadusa
 
 # Vanguard (Financial services jobs)
+# Vanguard (Financial services jobs)
 npm start -- --site=vanguard
+
+# Nvoids (Aggregator, "Today" filter)
+npm start -- --site=nvoids
 ```
 
 ### Data Cleanup
@@ -173,6 +177,7 @@ TEST_RUN_DATE=2025-11-14 npm start -- --site=kforce
 | **Kforce**     | ⚡ Slower      | OPT/STEM OPT | Contract roles, 30s crawl-delay required               |
 | **Randstad**   | ⚡⚡ Fast      | OPT/STEM OPT | Contract/Temp jobs                                     |
 | **Vanguard**   | ⚡⚡ Fast      | OPT/STEM OPT | Financial services, auto-sorts newest                  |
+| **Nvoids**     | ⚡⚡ Fast      | OPT/STEM OPT | Aggregator, "Today" filter (IST/EST)                   |
 
 ## 🧠 How It Works
 
