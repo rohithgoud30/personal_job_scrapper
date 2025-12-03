@@ -49,14 +49,15 @@ KEYWORD_BATCH_SIZE=5
 TEST_RUN_DATE=
 ```
 
-| Variable                | Description                                           | Required | Example Values                                                                         |
-| ----------------------- | ----------------------------------------------------- | -------- | -------------------------------------------------------------------------------------- |
-| `AI_API_KEY`            | API key for your AI provider                          | ✅ Yes   | OpenAI key, Zhipu AI key, etc.                                                         |
-| `AI_BASE_URL`           | API endpoint URL                                      | ✅ Yes   | `https://api.openai.com/v1/` (OpenAI)<br>`https://api.z.ai/api/coding/paas/v4` (Zhipu) |
-| `AI_TITLE_FILTER_MODEL` | Model for Stage 1 (title filtering)                   | ✅ Yes   | `gpt-3.5-turbo`, `glm-4.6`                                                             |
-| `AI_DETAIL_EVAL_MODEL`  | Model for Stage 2 (detail evaluation)                 | ✅ Yes   | `gpt-4`, `glm-4.5-Air`                                                                 |
-| `KEYWORD_BATCH_SIZE`    | Number of parallel keyword searches                   | ❌ No    | Default: `5`                                                                           |
-| `TEST_RUN_DATE`         | Backfill date (YYYY-MM-DD, leave empty for live runs) | ❌ No    | `2025-11-14` or empty                                                                  |
+| Variable                        | Description                                           | Required | Example Values                                                                         |
+| ------------------------------- | ----------------------------------------------------- | -------- | -------------------------------------------------------------------------------------- |
+| `AI_API_KEY`                    | API key for your AI provider                          | ✅ Yes   | OpenAI key, Zhipu AI key, etc.                                                         |
+| `AI_BASE_URL`                   | API endpoint URL                                      | ✅ Yes   | `https://api.openai.com/v1/` (OpenAI)<br>`https://api.z.ai/api/coding/paas/v4` (Zhipu) |
+| `AI_TITLE_FILTER_MODEL`         | Model for Stage 1 (title filtering)                   | ✅ Yes   | `gpt-3.5-turbo`, `glm-4.6`                                                             |
+| `AI_DETAIL_EVAL_MODEL`          | Model for Stage 2 (detail evaluation)                 | ✅ Yes   | `gemini-2.0-flash-exp`, `glm-4.5-Air`                                                  |
+| `FALLBACK_AI_DETAIL_EVAL_MODEL` | Fallback model for Stage 2                            | ❌ No    | `glm-4.5-Air`                                                                          |
+| `KEYWORD_BATCH_SIZE`            | Number of parallel keyword searches                   | ❌ No    | Default: `5`                                                                           |
+| `TEST_RUN_DATE`                 | Backfill date (YYYY-MM-DD, leave empty for live runs) | ❌ No    | `2025-11-14` or empty                                                                  |
 
 #### 🔌 Supported AI Providers
 
@@ -200,7 +201,9 @@ TEST_RUN_DATE=2025-11-14 npm start -- --site=kforce
 - Removes: Data Engineer, BI/Analytics, QA/SDET, .NET, C#, Go, Legacy Tech
 - Keeps: Modern web/full-stack roles
 
-**Stage 2: Detail Evaluation** (Model: `glm-4.5-Air`)
+**Stage 2: Detail Evaluation** (Primary: `gemini-2.0-flash-exp`, Fallback: `glm-4.5-Air`)
+
+- **Fallback Logic**: Automatically switches to `glm-4.5-Air` (via OpenAI/Zhipu client) if the primary model fails or on any retry attempt (e.g., token limits, timeouts).
 
 - ✅ **Tech Stack**: React, Angular, Next.js, Node.js, Java/Spring Boot, Python/FastAPI
 - ✅ **Experience**: Min <= 5 years (e.g., "3-5 years", "5+", "5 years"). Accepts parallel experience.

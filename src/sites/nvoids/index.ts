@@ -386,7 +386,8 @@ async function collectListingRows(
     }
 
     // Check for Next button
-    const nextSelector = site.search.selectors.next ?? "a:has-text('Next')";
+    const nextSelector =
+      site.search.selectors.next ?? "a:has-text('Next'):not(table *)";
     const nextBtn = page.locator(nextSelector);
     if (await nextBtn.isVisible()) {
       await nextBtn.click();
@@ -606,53 +607,117 @@ function normalizeKeywords(raw: string | string[]): string[] {
 }
 
 function isPostedToday(posted: string, referenceDate: Date): boolean {
-  // Nvoids uses UTC/GMT+0 timezone with format: "HH:MM AM/PM DD-Mon-YY"
+  // Nvoids uses IST (India Standard Time) timezone with format: "HH:MM AM/PM DD-Mon-YY"
   // Examples: "03:18 AM 02-Dec-25", "11:54 PM 01-Dec-25"
 
-  // Get today's date in UTC
-  const todayUTC = new Date(referenceDate);
-  const utcYear = todayUTC.getUTCFullYear();
-  const utcMonth = todayUTC.getUTCMonth() + 1; // 0-indexed
-  const utcDay = todayUTC.getUTCDate();
+  // Helper to check if a Date matches "Today" in a specific timezone
+  const isTodayInZone = (jobDate: Date, zone: string): boolean => {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+    });
 
-  // Parse nvoids format: "HH:MM AM/PM DD-Mon-YY"
-  const dateMatch = posted.match(/(\d{2})-([A-Za-z]{3})-(\d{2})/);
+    // Get Reference Date (Now) parts in Zone
+    const refParts = formatter.formatToParts(referenceDate);
+    const refYear = parseInt(
+      refParts.find((p) => p.type === "year")?.value || "0"
+    );
+    const refMonth = parseInt(
+      refParts.find((p) => p.type === "month")?.value || "0"
+    );
+    const refDay = parseInt(
+      refParts.find((p) => p.type === "day")?.value || "0"
+    );
+
+    // Get Job Date parts in Zone
+    const jobParts = formatter.formatToParts(jobDate);
+    const jobYear = parseInt(
+      jobParts.find((p) => p.type === "year")?.value || "0"
+    );
+    const jobMonth = parseInt(
+      jobParts.find((p) => p.type === "month")?.value || "0"
+    );
+    const jobDay = parseInt(
+      jobParts.find((p) => p.type === "day")?.value || "0"
+    );
+
+    return refYear === jobYear && refMonth === jobMonth && refDay === jobDay;
+  };
+
+  // Parse the job's posted date string
+  // Format: "HH:MM AM/PM DD-Mon-YY" -> e.g. "11:54 PM 01-Dec-25"
+  const dateMatch = posted.match(
+    /(\d{2}):(\d{2})\s+(AM|PM)\s+(\d{2})-([A-Za-z]{3})-(\d{2})/
+  );
+
   if (dateMatch) {
-    const [_, day, monthStr, year] = dateMatch;
+    const [_, hourStr, minStr, ampm, dayStr, monthStr, yearStr] = dateMatch;
 
-    // Convert month string to number
     const monthMap: { [key: string]: number } = {
-      Jan: 1,
-      Feb: 2,
-      Mar: 3,
-      Apr: 4,
-      May: 5,
-      Jun: 6,
-      Jul: 7,
-      Aug: 8,
-      Sep: 9,
-      Oct: 10,
-      Nov: 11,
-      Dec: 12,
+      Jan: 0,
+      Feb: 1,
+      Mar: 2,
+      Apr: 3,
+      May: 4,
+      Jun: 5,
+      Jul: 6,
+      Aug: 7,
+      Sep: 8,
+      Oct: 9,
+      Nov: 10,
+      Dec: 11,
     };
 
+    let hour = parseInt(hourStr);
+    const minute = parseInt(minStr);
+    const day = parseInt(dayStr);
     const month = monthMap[monthStr];
-    const fullYear = 2000 + parseInt(year); // Convert "25" to 2025
+    const year = 2000 + parseInt(yearStr);
 
-    return (
-      parseInt(day) === utcDay && month === utcMonth && fullYear === utcYear
-    );
+    if (ampm === "PM" && hour < 12) hour += 12;
+    if (ampm === "AM" && hour === 12) hour = 0;
+
+    // Construct Date object treating the parsed time as IST (UTC+5:30)
+    // 1. Create UTC timestamp for the parsed components
+    const utcTimestamp = Date.UTC(year, month, day, hour, minute);
+    // 2. Subtract 5.5 hours (in ms) to get the actual UTC timestamp
+    //    because "11:00 PM IST" is "5:30 PM UTC" (earlier)
+    const istOffsetMs = (5 * 60 + 30) * 60 * 1000;
+    const jobDate = new Date(utcTimestamp - istOffsetMs);
+
+    // Check if it's Today in IST OR Today in EST (New York)
+    const isTodayIST = isTodayInZone(jobDate, "Asia/Kolkata");
+    const isTodayEST = isTodayInZone(jobDate, "America/New_York");
+
+    return isTodayIST || isTodayEST;
   }
 
   // Fallback: try parsing as MM/DD/YYYY format (legacy support)
   const slashMatch = posted.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (slashMatch) {
     const [_, m, d, y] = slashMatch;
-    const formatted = `${m.padStart(2, "0")}/${d.padStart(2, "0")}/${y}`;
-    const todayFormatted = `${String(utcMonth).padStart(2, "0")}/${String(
-      utcDay
-    ).padStart(2, "0")}/${utcYear}`;
-    return formatted === todayFormatted;
+    const jobDateStr = `${parseInt(m)}/${parseInt(d)}/${y}`;
+
+    const getZoneDateStr = (zone: string) => {
+      const f = new Intl.DateTimeFormat("en-US", {
+        timeZone: zone,
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+      });
+      const p = f.formatToParts(referenceDate);
+      const year = p.find((x) => x.type === "year")?.value;
+      const month = p.find((x) => x.type === "month")?.value;
+      const day = p.find((x) => x.type === "day")?.value;
+      return `${month}/${day}/${year}`;
+    };
+
+    return (
+      jobDateStr === getZoneDateStr("Asia/Kolkata") ||
+      jobDateStr === getZoneDateStr("America/New_York")
+    );
   }
 
   return false;
