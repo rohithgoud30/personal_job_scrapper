@@ -46,13 +46,38 @@ class RejectedLogger {
       jobsBySheet[sheetName].push(job);
     }
 
-    const workbook = XLSX.utils.book_new();
+    let workbook: XLSX.WorkBook;
+    const dir = path.dirname(outputPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    if (fs.existsSync(outputPath)) {
+      try {
+        workbook = XLSX.readFile(outputPath);
+      } catch (error) {
+        console.warn(
+          `[RejectedLogger] Failed to read existing file at ${outputPath}. Creating new one.`,
+          error
+        );
+        workbook = XLSX.utils.book_new();
+      }
+    } else {
+      workbook = XLSX.utils.book_new();
+    }
 
     for (const sheetName of Object.keys(jobsBySheet)) {
-      const jobs = jobsBySheet[sheetName].reverse();
+      const newJobs = jobsBySheet[sheetName].reverse();
+      // Sheet names in Excel have a 31 char limit.
+      const safeSheetName = sheetName.slice(0, 31);
 
-      const worksheetData = jobs.map((job, index) => ({
-        "Serial No": index + 1,
+      let existingData: any[] = [];
+      if (workbook.Sheets[safeSheetName]) {
+        existingData = XLSX.utils.sheet_to_json(workbook.Sheets[safeSheetName]);
+      }
+
+      const newRows = newJobs.map((job, index) => ({
+        "Serial No": existingData.length + index + 1,
         "Job Title": job.title,
         "Job Site Name": job.site,
         "Job Link": job.url,
@@ -61,23 +86,21 @@ class RejectedLogger {
         "Scraped At": job.scraped_at,
       }));
 
-      const worksheet = XLSX.utils.json_to_sheet(worksheetData);
-      // Sheet names in Excel have a 31 char limit.
-      // "randstadusa - Detail" is 20 chars, so we should be safe for now.
-      // But let's truncate just in case.
-      const safeSheetName = sheetName.slice(0, 31);
-      XLSX.utils.book_append_sheet(workbook, worksheet, safeSheetName);
-    }
+      const combinedData = [...existingData, ...newRows];
+      const worksheet = XLSX.utils.json_to_sheet(combinedData);
 
-    // Ensure directory exists
-    const dir = path.dirname(outputPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+      // If sheet exists, we need to replace it in the workbook object
+      // XLSX doesn't have a direct "replace sheet" method, but assigning to Sheets[name] works
+      // We also need to ensure it's in SheetNames if it wasn't before
+      workbook.Sheets[safeSheetName] = worksheet;
+      if (!workbook.SheetNames.includes(safeSheetName)) {
+        XLSX.utils.book_append_sheet(workbook, worksheet, safeSheetName);
+      }
     }
 
     XLSX.writeFile(workbook, outputPath);
     console.log(
-      `[RejectedLogger] Saved ${this.rejectedJobs.length} rejected jobs to ${outputPath}`
+      `[RejectedLogger] Saved ${this.rejectedJobs.length} new rejected jobs to ${outputPath}`
     );
   }
 }
