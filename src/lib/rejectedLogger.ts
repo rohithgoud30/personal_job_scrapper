@@ -84,8 +84,8 @@ class RejectedLogger {
         existingData = XLSX.utils.sheet_to_json(workbook.Sheets[safeSheetName]);
       }
 
-      const newRows = newJobs.map((job, index) => ({
-        "Serial No": existingData.length + index + 1,
+      const newRows = newJobs.map((job) => ({
+        "Serial No": 0, // Placeholder, will be regenerated
         Date: dateStr,
         "Job Title": job.title,
         "Job Site Name": job.site,
@@ -96,6 +96,19 @@ class RejectedLogger {
       }));
 
       const combinedData = [...existingData, ...newRows];
+
+      // Sort by Date descending
+      combinedData.sort((a: any, b: any) => {
+        const dateA = new Date(a.Date).getTime();
+        const dateB = new Date(b.Date).getTime();
+        return dateB - dateA;
+      });
+
+      // Regenerate Serial No
+      combinedData.forEach((row: any, index: number) => {
+        row["Serial No"] = index + 1;
+      });
+
       const worksheet = XLSX.utils.json_to_sheet(combinedData);
 
       // If sheet exists, we need to replace it in the workbook object
