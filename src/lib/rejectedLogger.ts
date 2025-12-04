@@ -90,7 +90,7 @@ class RejectedLogger {
         "Job Title": job.title,
         "Job Site Name": job.site,
         "Job Link": job.url,
-        "Extracted JD": job.jd,
+        "Extracted JD": job.jd ? job.jd.slice(0, 32000) : "",
         "Reason for Rejection": job.reason,
         "Scraped At": job.scraped_at,
       }));
