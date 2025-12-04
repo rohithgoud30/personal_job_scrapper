@@ -264,6 +264,7 @@ async function scrapeKeywordInNewPage(
   isBackfill: boolean
 ): Promise<void> {
   const page = await context.newPage();
+  await blockAds(page);
   try {
     console.log(`[nvoids][${keyword}] Searching for keyword "${keyword}"`);
     await prepareSearchPage(page, site, keyword);
@@ -425,6 +426,15 @@ async function extractJobRow(
       return null;
     }
 
+    // Validate URL to ensure it's not an ad redirect
+    if (
+      url.includes("googleads") ||
+      url.includes("doubleclick") ||
+      url.includes("adservice")
+    ) {
+      return null;
+    }
+
     const locationCell = row.locator("td:nth-child(2)");
     const locationText = await locationCell.innerText().catch(() => "");
 
@@ -459,6 +469,7 @@ async function evaluateDetailedJobs(
   for (let i = 0; i < roles.length; i++) {
     const role = roles[i];
     const page = await context.newPage();
+    await blockAds(page);
     try {
       await page.goto(role.url, {
         waitUntil: "domcontentloaded",
@@ -736,4 +747,28 @@ function extractJobId(url: string): string | null {
 
 function createSessionId(): string {
   return `session-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+}
+
+async function blockAds(page: Page): Promise<void> {
+  await page.route("**/*", (route) => {
+    const url = route.request().url();
+    const adDomains = [
+      "googleads",
+      "doubleclick",
+      "googlesyndication",
+      "adservice",
+      "adnxs",
+      "rubiconproject",
+      "criteo",
+      "advertising",
+      "ads",
+      "analytics",
+      "tracker",
+      "pixel",
+    ];
+    if (adDomains.some((d) => url.includes(d))) {
+      return route.abort();
+    }
+    return route.continue();
+  });
 }
