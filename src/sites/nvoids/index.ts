@@ -202,12 +202,6 @@ export async function runNvoidsSite(
     console.log(
       `[nvoids] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`
     );
-    rejectedLogger.save(
-      path.join(
-        outputPaths.directory,
-        `rejected_jobs_${outputPaths.dateFolder}.xlsx`
-      )
-    );
   } finally {
     await context.close();
   }
@@ -388,11 +382,22 @@ async function collectListingRows(
     // Check for Next button
     const nextSelector =
       site.search.selectors.next ?? "a:has-text('Next'):not(table *)";
-    const nextBtn = page.locator(nextSelector);
-    if (await nextBtn.isVisible()) {
-      await nextBtn.click();
-      await page.waitForTimeout(2000);
-      pageIndex++;
+
+    // Use count() to check for existence safely without strict mode violation
+    const nextBtns = page.locator(nextSelector);
+    if ((await nextBtns.count()) > 0) {
+      const nextBtn = nextBtns.first();
+      // We can check visibility on the first element safely
+      if (await nextBtn.isVisible()) {
+        await nextBtn.click();
+        await page.waitForTimeout(2000);
+        pageIndex++;
+      } else {
+        console.log(
+          `[nvoids][${keyword}] Next button present but not visible. Stopping pagination.`
+        );
+        break;
+      }
     } else {
       console.log(
         `[nvoids][${keyword}] No more pages available. Stopping pagination.`
