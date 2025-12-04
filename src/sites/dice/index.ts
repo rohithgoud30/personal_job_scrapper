@@ -493,57 +493,69 @@ async function collectListingRows(
   try {
     await page.waitForSelector(selectors.card, { timeout: 30000 });
 
-    // Retry logic for posted dates with intelligent validation
+    // Retry logic for posted dates with intelligent validation and page reload
     if (selectors.posted) {
       let datesLoaded = false;
+      const maxRetries = 2;
       const waitTime = 20000; // Wait 20 seconds for page to render
 
-      console.log(
-        `[dice][${keyword}] Waiting up to 20 seconds for posted dates to load...`
-      );
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        if (attempt > 0) {
+          console.log(
+            `[dice][${keyword}] Retry attempt ${attempt}/${maxRetries}: Reloading page to fix missing dates...`
+          );
+          await page.reload({ waitUntil: "domcontentloaded" });
+          await page.waitForSelector(selectors.card, { timeout: 30000 });
+        }
 
-      // Wait for the selector
-      const selectorFound = await page
-        .waitForSelector(selectors.posted, { timeout: waitTime })
-        .then(() => true)
-        .catch(() => false);
+        console.log(
+          `[dice][${keyword}] Waiting up to 20 seconds for posted dates to load...`
+        );
 
-      if (selectorFound) {
-        // Validate that dates are actually populated in the DOM
-        const hasPopulatedDates = await page.evaluate((sel) => {
-          const dateElements = document.querySelectorAll(sel);
-          if (dateElements.length === 0) return false;
+        // Wait for the selector
+        const selectorFound = await page
+          .waitForSelector(selectors.posted, { timeout: waitTime })
+          .then(() => true)
+          .catch(() => false);
 
-          // Check if at least some dates have non-empty text
-          let populatedCount = 0;
-          for (const el of Array.from(dateElements)) {
-            const text = (el as HTMLElement).innerText?.trim();
-            if (text && text.length > 0) {
-              populatedCount++;
+        if (selectorFound) {
+          // Validate that dates are actually populated in the DOM
+          const hasPopulatedDates = await page.evaluate((sel) => {
+            const dateElements = document.querySelectorAll(sel);
+            if (dateElements.length === 0) return false;
+
+            // Check if at least some dates have non-empty text
+            let populatedCount = 0;
+            for (const el of Array.from(dateElements)) {
+              const text = (el as HTMLElement).innerText?.trim();
+              if (text && text.length > 0) {
+                populatedCount++;
+              }
             }
+
+            // Consider dates loaded if at least 50% have content
+            return populatedCount >= dateElements.length * 0.5;
+          }, selectors.posted);
+
+          if (hasPopulatedDates) {
+            console.log(`[dice][${keyword}] Posted dates successfully loaded.`);
+            datesLoaded = true;
+            break; // Success, exit loop
+          } else {
+            console.warn(
+              `[dice][${keyword}] Date selectors found but not populated.`
+            );
           }
-
-          // Consider dates loaded if at least 50% have content
-          return populatedCount >= dateElements.length * 0.5;
-        }, selectors.posted);
-
-        if (hasPopulatedDates) {
-          console.log(`[dice][${keyword}] Posted dates successfully loaded.`);
-          datesLoaded = true;
         } else {
           console.warn(
-            `[dice][${keyword}] Date selectors found but not populated.`
+            `[dice][${keyword}] Posted date selector not found after 20s wait.`
           );
         }
-      } else {
-        console.warn(
-          `[dice][${keyword}] Posted date selector not found after 20s wait.`
-        );
       }
 
       if (!datesLoaded) {
         console.warn(
-          `[dice][${keyword}] Warning: Posted dates did not load after 20s wait. Proceeding anyway.`
+          `[dice][${keyword}] Warning: Posted dates did not load after ${maxRetries} retries. Proceeding anyway.`
         );
       }
     }
@@ -821,7 +833,26 @@ async function evaluateDetailedJobs(
           continue;
         }
 
+        // Strict C2C Check: Reject if "Corp to Corp" or "C2C" is NOT found
+        // The user explicitly requested: "overview must be in job detail section not search in that search for 'Contract Corp To Corp' else reject"
+        if (!foundC2C) {
+          console.log(
+            `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: Employment Type does not include "Corp to Corp" or "C2C".`
+          );
+          rejectedLogger.log({
+            title: role.title,
+            site: site.key,
+            url: role.url,
+            jd: description,
+            reason: 'Employment Type does not include "Corp to Corp" or "C2C"',
+            scraped_at: role.scraped_at,
+            type: "detail",
+          });
+          continue;
+        }
+
         // Reject if ONLY W2 Contract (without C2C or Independent options)
+        // Note: The strict C2C check above effectively covers this, but keeping logic clear.
         if (foundW2Contract && !foundC2C && !foundIndependent) {
           console.log(
             `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: Employment Type is W2 Contract only (no C2C or Independent options).`
