@@ -697,7 +697,58 @@ async function evaluateDetailedJobs(
       if (site.search.selectors.jobType) {
         const jobTypeElements = page.locator(site.search.selectors.jobType);
         const count = await jobTypeElements.count();
-        // Removed strict C2C/W2 filtering logic as per user request to allow Full Time and W2 roles.
+        if (count > 0) {
+          const typeText = (await jobTypeElements.first().innerText()) || "";
+
+          // Strict No-W2/Full Time/Part Time Check: Reject if found in Title, Description, or Type
+          const w2Regex = /\bW2\b/i;
+          const fullTimeRegex = /Full\s*Time/i;
+          const partTimeRegex = /Part\s*Time/i;
+
+          if (
+            w2Regex.test(role.title) ||
+            w2Regex.test(description) ||
+            w2Regex.test(typeText) ||
+            fullTimeRegex.test(typeText) ||
+            partTimeRegex.test(typeText)
+          ) {
+            console.log(
+              `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: "W2", "Full Time", or "Part Time" found.`
+            );
+            rejectedLogger.log({
+              title: role.title,
+              site: site.key,
+              url: role.url,
+              jd: description,
+              reason: `"W2", "Full Time", or "Part Time" found in job details.`,
+              scraped_at: role.scraped_at,
+              type: "detail",
+            });
+            continue;
+          }
+
+          // Strict C2C Check: Must contain "Corp-to-Corp", "Corp To Corp", or "C2C"
+          const hasC2C =
+            typeText.match(/Corp-to-Corp/i) ||
+            typeText.match(/Corp To Corp/i) ||
+            typeText.match(/C2C/i);
+
+          if (!hasC2C) {
+            console.log(
+              `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: Employment type "${typeText}" does not include C2C.`
+            );
+            rejectedLogger.log({
+              title: role.title,
+              site: site.key,
+              url: role.url,
+              jd: description,
+              reason: `Employment type "${typeText}" does not include C2C.`,
+              scraped_at: role.scraped_at,
+              type: "detail",
+            });
+            continue;
+          }
+        }
       }
 
       // Validate Posted Date if selector is present
