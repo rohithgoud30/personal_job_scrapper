@@ -493,72 +493,8 @@ async function collectListingRows(
   try {
     await page.waitForSelector(selectors.card, { timeout: 30000 });
 
-    // Retry logic for posted dates with intelligent validation and page reload
-    if (selectors.posted) {
-      let datesLoaded = false;
-      const maxRetries = 2;
-      const waitTime = 20000; // Wait 20 seconds for page to render
-
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        if (attempt > 0) {
-          console.log(
-            `[dice][${keyword}] Retry attempt ${attempt}/${maxRetries}: Reloading page to fix missing dates...`
-          );
-          await page.reload({ waitUntil: "domcontentloaded" });
-          await page.waitForSelector(selectors.card, { timeout: 30000 });
-        }
-
-        console.log(
-          `[dice][${keyword}] Waiting up to 20 seconds for posted dates to load...`
-        );
-
-        // Wait for the selector
-        const selectorFound = await page
-          .waitForSelector(selectors.posted, { timeout: waitTime })
-          .then(() => true)
-          .catch(() => false);
-
-        if (selectorFound) {
-          // Validate that dates are actually populated in the DOM
-          const hasPopulatedDates = await page.evaluate((sel) => {
-            const dateElements = document.querySelectorAll(sel);
-            if (dateElements.length === 0) return false;
-
-            // Check if at least some dates have non-empty text
-            let populatedCount = 0;
-            for (const el of Array.from(dateElements)) {
-              const text = (el as HTMLElement).innerText?.trim();
-              if (text && text.length > 0) {
-                populatedCount++;
-              }
-            }
-
-            // Consider dates loaded if at least 50% have content
-            return populatedCount >= dateElements.length * 0.5;
-          }, selectors.posted);
-
-          if (hasPopulatedDates) {
-            console.log(`[dice][${keyword}] Posted dates successfully loaded.`);
-            datesLoaded = true;
-            break; // Success, exit loop
-          } else {
-            console.warn(
-              `[dice][${keyword}] Date selectors found but not populated.`
-            );
-          }
-        } else {
-          console.warn(
-            `[dice][${keyword}] Posted date selector not found after 20s wait.`
-          );
-        }
-      }
-
-      if (!datesLoaded) {
-        console.warn(
-          `[dice][${keyword}] Warning: Posted dates did not load after ${maxRetries} retries. Proceeding anyway.`
-        );
-      }
-    }
+    // Retry logic removed as per user request (was causing useless delays)
+    // We rely on the card selector wait and the text fallback below.
   } catch {
     console.log(`[dice][${keyword}] No results found for "${keyword}"`);
     return [];
@@ -593,7 +529,10 @@ async function collectListingRows(
 
       return cards.map((card) => {
         const titleEl = selectors.title
-          ? card.querySelector(selectors.title)
+          ? Array.from(card.querySelectorAll(selectors.title)).find(
+              (el) =>
+                !(el as HTMLElement).innerText.toLowerCase().includes("apply")
+            )
           : null;
         const companyEl = selectors.company
           ? card.querySelector(selectors.company)
@@ -615,28 +554,23 @@ async function collectListingRows(
           : "";
         let posted = postedEl ? (postedEl as HTMLElement).innerText.trim() : "";
 
-        // Fallback: Check outerHTML directly
+        const text = (card as HTMLElement).innerText;
+
+        // Fallback: Check text content if selector failed
         if (!posted) {
-          const html = card.outerHTML;
-          if (html.match(/>\s*Today\s*</i)) {
+          // Check for common patterns in the full text
+          if (text.match(/Today/i)) {
             posted = "Today";
-          } else if (html.match(/>\s*Just now\s*</i)) {
+          } else if (text.match(/Just now/i)) {
             posted = "Just now";
           } else {
-            const match = html.match(
-              />\s*(\d+ (minute|hour|day|week)s? ago)\s*</i
+            const agoMatch = text.match(
+              /(\d+\s+(?:minute|hour|day|week)s?\s+ago)/i
             );
-            if (match) {
-              posted = match[1];
+            if (agoMatch) {
+              posted = agoMatch[1];
             }
           }
-        }
-
-        // Force "Today" if the text "Today" appears anywhere in the card's innerText
-        // This is a broad catch-all requested by the user to handle sponsored/weird layouts
-        const text = (card as HTMLElement).innerText;
-        if (!posted && text && text.match(/Today/i)) {
-          posted = "Today";
         }
 
         // Location fallback
@@ -657,19 +591,10 @@ async function collectListingRows(
       `[dice][${keyword}] Found ${rawJobs.length} cards on page ${pageIndex}`
     );
 
-    // Debug empty posted dates
-    const emptyPosted = rawJobs.filter((r) => !r.posted).length;
-    if (emptyPosted > 0) {
-      console.warn(
-        `[dice][${keyword}] Warning: ${emptyPosted}/${rawJobs.length} cards have empty posted dates.`
-      );
-      if (rawJobs.length > 0) {
-        // console.log(`[dice] Sample Card HTML: ${rawJobs[0].html}`);
-      }
-    }
-
     for (const raw of rawJobs) {
-      if (!raw.title || !raw.href) continue;
+      if (!raw.title || !raw.href) {
+        continue;
+      }
 
       // Construct full URL
       // raw.href might be relative or absolute
@@ -772,103 +697,7 @@ async function evaluateDetailedJobs(
       if (site.search.selectors.jobType) {
         const jobTypeElements = page.locator(site.search.selectors.jobType);
         const count = await jobTypeElements.count();
-        let foundFullTime = false;
-        let foundContract = false;
-        let foundW2Contract = false;
-        let foundC2C = false;
-        let foundIndependent = false;
-
-        for (let j = 0; j < count; j++) {
-          const text = (await jobTypeElements.nth(j).innerText()).toLowerCase();
-          if (text.includes("full time") || text.includes("full-time")) {
-            foundFullTime = true;
-          }
-          if (
-            text.includes("contract") ||
-            text.includes("c2c") ||
-            text.includes("freelance")
-          ) {
-            foundContract = true;
-          }
-          // Check for W2 Contract specifically
-          if (
-            text.includes("contract - w2") ||
-            text.includes("contract-w2") ||
-            text.includes("contract w2")
-          ) {
-            foundW2Contract = true;
-          }
-          // Check for corp-to-corp
-          if (
-            text.includes("corp to corp") ||
-            text.includes("c2c") ||
-            text.includes("corp-to-corp")
-          ) {
-            foundC2C = true;
-          }
-          // Check for independent contract
-          if (
-            text.includes("contract - independent") ||
-            text.includes("contract-independent") ||
-            text.includes("independent")
-          ) {
-            foundIndependent = true;
-          }
-        }
-
-        // Reject if ONLY Full Time (no contract options at all)
-        if (foundFullTime && !foundContract) {
-          console.log(
-            `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: Employment Type is Full Time only.`
-          );
-          rejectedLogger.log({
-            title: role.title,
-            site: site.key,
-            url: role.url,
-            jd: description,
-            reason: "Employment Type is Full Time only",
-            scraped_at: role.scraped_at,
-            type: "detail",
-          });
-          continue;
-        }
-
-        // Strict C2C Check: Reject if "Corp to Corp" or "C2C" is NOT found
-        // The user explicitly requested: "overview must be in job detail section not search in that search for 'Contract Corp To Corp' else reject"
-        if (!foundC2C) {
-          console.log(
-            `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: Employment Type does not include "Corp to Corp" or "C2C".`
-          );
-          rejectedLogger.log({
-            title: role.title,
-            site: site.key,
-            url: role.url,
-            jd: description,
-            reason: 'Employment Type does not include "Corp to Corp" or "C2C"',
-            scraped_at: role.scraped_at,
-            type: "detail",
-          });
-          continue;
-        }
-
-        // Reject if ONLY W2 Contract (without C2C or Independent options)
-        // Note: The strict C2C check above effectively covers this, but keeping logic clear.
-        if (foundW2Contract && !foundC2C && !foundIndependent) {
-          console.log(
-            `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: Employment Type is W2 Contract only (no C2C or Independent options).`
-          );
-          rejectedLogger.log({
-            title: role.title,
-            site: site.key,
-            url: role.url,
-            jd: description,
-            reason:
-              "Employment Type is W2 Contract only (no C2C or Independent options)",
-            scraped_at: role.scraped_at,
-            type: "detail",
-          });
-          continue;
-        }
+        // Removed strict C2C/W2 filtering logic as per user request to allow Full Time and W2 roles.
       }
 
       // Validate Posted Date if selector is present
