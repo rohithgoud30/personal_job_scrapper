@@ -35,8 +35,7 @@ class RejectedLogger {
 
     // Default to centralized path if not provided
     const finalPath =
-      outputPath ||
-      path.join(process.cwd(), "data", "rejected_list", "rejected_jobs.xlsx");
+      outputPath || path.join(process.cwd(), "data", "rejected_jobs.xlsx");
 
     // Group by "Site - Type"
     const jobsBySheet: Record<string, RejectedJob[]> = {};
