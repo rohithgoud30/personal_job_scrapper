@@ -698,7 +698,15 @@ async function evaluateDetailedJobs(
         const jobTypeElements = page.locator(site.search.selectors.jobType);
         const count = await jobTypeElements.count();
         if (count > 0) {
-          const typeText = (await jobTypeElements.first().innerText()) || "";
+          // Collect text from ALL job type elements, not just the first one
+          const allTexts: string[] = [];
+          for (let j = 0; j < count; j++) {
+            const text = (await jobTypeElements.nth(j).innerText()) || "";
+            if (text.trim()) {
+              allTexts.push(text.trim());
+            }
+          }
+          const typeText = allTexts.join(" | ");
 
           // Strict No-W2/Full Time/Part Time Check: Reject if found in Title, Description, or Type
           const w2Regex = /\bW2\b/i;
