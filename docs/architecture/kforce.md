@@ -28,7 +28,7 @@ This document explains the entire workflow in plain language so anyone can under
 ## 4. Staging, Sessions, and Dedupe
 
 - Every run receives a `session-<timestamp>` folder under `data/<host>/<date>/sessions/<sessionId>`. Raw results (after deduping against `seen.json`) land in `roles/new_roles.csv` with columns `session_id, keyword, ... job details`.
-- `seen.json` continues to store stable job IDs per date, so `new_roles.csv` only contains brand-new rows. After a job is approved later in the pipeline, its ID is added to `seen.json` to prevent reprocessing.
+- `seen.json` stores **both accepted AND rejected** job IDs per date. This means previously rejected jobs are skipped immediately in future runs, saving AI API costs on title filtering and detail evaluation.
 
 ## 5. Two-Stage AI Filtering
 

@@ -67,6 +67,7 @@ The scraper uses a two-stage AI process to ensure high-quality results matching 
 
 - **Session Storage**: Raw scraped data is saved in `data/corptocorp.org/<DATE>/sessions/<SESSION_ID>/roles/new_roles.csv`.
 - **Final CSV**: Approved jobs are appended to `data/corptocorp.org/<DATE>/new_jobs_<DATE>.csv`.
+- **Deduplication**: `seen.json` stores **both accepted AND rejected** job IDs. Previously rejected jobs are skipped in future runs, saving AI API costs.
 
 ## 5. Resuming Sessions
 

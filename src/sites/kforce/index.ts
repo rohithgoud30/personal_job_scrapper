@@ -173,6 +173,9 @@ export async function runKforceSite(
           scraped_at: row.scraped_at,
           type: "title",
         });
+        // Add rejected job to seen so it's skipped in future sessions
+        const jobKey = computeJobKey(row);
+        seen.add(jobKey);
         rejectIndex += 1;
       }
     }
@@ -183,6 +186,7 @@ export async function runKforceSite(
     if (!filtered.length) {
       console.log("[kforce] AI filtered out all titles for this session.");
       await writeSessionRoles(sessionPaths, filtered);
+      await saveSeenStore(outputPaths.seenFile, seen);
       return;
     }
 
@@ -201,6 +205,7 @@ export async function runKforceSite(
     );
     if (!acceptedRows.length) {
       console.log("[kforce] No jobs approved after detail evaluation.");
+      await saveSeenStore(outputPaths.seenFile, seen);
       return;
     }
 
@@ -526,6 +531,9 @@ async function evaluateDetailedJobs(
           scraped_at: role.scraped_at,
           type: "detail",
         });
+        // Add rejected job to seen so it's skipped in future sessions
+        const jobKey = computeJobKey(role);
+        seen.add(jobKey);
         continue;
       }
 

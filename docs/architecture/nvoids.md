@@ -61,3 +61,5 @@ Results are saved in:
 
 Rejected jobs are logged in:
 `data/nvoids/<date>/rejected_jobs_<date>.xlsx`
+
+> [!NOTE] > **Cost Optimization**: `seen.json` stores both accepted AND rejected job IDs. Previously rejected jobs are skipped in future runs, saving AI API costs.

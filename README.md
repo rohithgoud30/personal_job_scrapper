@@ -223,12 +223,14 @@ data/
 └── corptocorp.org/
     └── 11_18_2025/
         ├── new_jobs_11_18_2025.csv          # Final approved jobs
-        ├── seen.json                         # Deduplication store
+        ├── seen.json                         # Deduplication store (accepted + rejected)
         └── sessions/
             └── session-2025-11-19T.../
                 └── roles/
                     └── new_roles.csv         # Staged jobs (pre-AI)
 ```
+
+> [!NOTE] > **Cost Optimization**: `seen.json` stores both accepted AND rejected job IDs. This means previously rejected jobs are skipped immediately in future runs, saving AI API costs on title filtering and detail evaluation.
 
 ### CSV Format
 

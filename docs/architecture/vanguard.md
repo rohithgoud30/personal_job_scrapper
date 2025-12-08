@@ -11,7 +11,7 @@ The Vanguard Jobs scraper (`src/sites/vanguard/index.ts`) automates job data ext
 - **Sort by date**: Automatically sorts results by "Newest"
 - **AI-powered filtering**: Two-stage AI evaluation (title filter + detail evaluation)
 - **Session management**: Supports resuming from saved sessions
-- **Deduplication**: Prevents re-processing of previously seen jobs
+- **Deduplication**: Stores **both accepted AND rejected** job IDs in `seen.json`. Previously rejected jobs are skipped in future runs, saving AI API costs.
 
 ## Configuration (`config.json`)
 

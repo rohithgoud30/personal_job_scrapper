@@ -70,6 +70,7 @@ The scraper uses the standard two-stage AI process shared across all sites.
 
 - **Session Storage**: Raw scraped data is saved in `data/dice.com/<DATE>/sessions/<SESSION_ID>/roles/new_roles.csv`.
 - **Final CSV**: Approved jobs are appended to `data/dice.com/<DATE>/new_jobs_<DATE>.csv`.
+- **Deduplication**: `seen.json` stores **both accepted AND rejected** job IDs. Previously rejected jobs are skipped in future runs, saving AI API costs.
 
 ## 5. Resuming Sessions
 

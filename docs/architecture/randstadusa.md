@@ -22,7 +22,7 @@ This mirrors the Kforce flow: headful Playwright, config‑only selectors, poste
 ## 4) Dedupe & Session
 
 - Session ID: `session-<timestamp>`, with `roles/new_roles.csv` in `data/randstadusa/<date>/sessions/<sessionId>/`.
-- `seen.json` per site/date prevents reprocessing. Each new role gets a stable key and is deduped against seen + staged.
+- `seen.json` stores **both accepted AND rejected** job IDs per date. Previously rejected jobs are skipped immediately in future runs, saving AI API costs.
 
 ## 5) Two-Stage AI (shared logic with Kforce)
 
