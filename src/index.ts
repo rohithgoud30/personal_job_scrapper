@@ -144,12 +144,7 @@ async function runAllSites(
   );
 
   // Save rejected jobs log
-  const rejectedLogPath = path.join(
-    process.cwd(),
-    "data",
-    "rejected_jobs.xlsx"
-  );
-  rejectedLogger.save(rejectedLogPath);
+  rejectedLogger.save();
 }
 
 function scheduleSites(

@@ -27,11 +27,15 @@ class RejectedLogger {
     this.rejectedJobs = [];
   }
 
-  public save(outputPath: string): void {
+  public save(outputPath?: string): void {
     if (this.rejectedJobs.length === 0) {
       console.log("[RejectedLogger] No rejected jobs to save.");
       return;
     }
+
+    // Default to centralized path if not provided
+    const finalPath =
+      outputPath || path.join(process.cwd(), "data", "rejected_jobs.xlsx");
 
     // Group by "Site - Type"
     const jobsBySheet: Record<string, RejectedJob[]> = {};
@@ -47,17 +51,17 @@ class RejectedLogger {
     }
 
     let workbook: XLSX.WorkBook;
-    const dir = path.dirname(outputPath);
+    const dir = path.dirname(finalPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    if (fs.existsSync(outputPath)) {
+    if (fs.existsSync(finalPath)) {
       try {
-        workbook = XLSX.readFile(outputPath);
+        workbook = XLSX.readFile(finalPath);
       } catch (error) {
         console.warn(
-          `[RejectedLogger] Failed to read existing file at ${outputPath}. Creating new one.`,
+          `[RejectedLogger] Failed to read existing file at ${finalPath}. Creating new one.`,
           error
         );
         workbook = XLSX.utils.book_new();
@@ -65,6 +69,10 @@ class RejectedLogger {
     } else {
       workbook = XLSX.utils.book_new();
     }
+
+    // Get current date YYYY-MM-DD for the "Date" column
+    const now = new Date();
+    const dateStr = now.toISOString().split("T")[0];
 
     for (const sheetName of Object.keys(jobsBySheet)) {
       const newJobs = jobsBySheet[sheetName].reverse();
@@ -76,17 +84,31 @@ class RejectedLogger {
         existingData = XLSX.utils.sheet_to_json(workbook.Sheets[safeSheetName]);
       }
 
-      const newRows = newJobs.map((job, index) => ({
-        "Serial No": existingData.length + index + 1,
+      const newRows = newJobs.map((job) => ({
+        "Serial No": 0, // Placeholder, will be regenerated
+        Date: dateStr,
         "Job Title": job.title,
         "Job Site Name": job.site,
         "Job Link": job.url,
-        "Extracted JD": job.jd,
+        "Extracted JD": job.jd ? job.jd.slice(0, 32000) : "",
         "Reason for Rejection": job.reason,
         "Scraped At": job.scraped_at,
       }));
 
       const combinedData = [...existingData, ...newRows];
+
+      // Sort by Date descending
+      combinedData.sort((a: any, b: any) => {
+        const dateA = new Date(a.Date).getTime();
+        const dateB = new Date(b.Date).getTime();
+        return dateB - dateA;
+      });
+
+      // Regenerate Serial No
+      combinedData.forEach((row: any, index: number) => {
+        row["Serial No"] = index + 1;
+      });
+
       const worksheet = XLSX.utils.json_to_sheet(combinedData);
 
       // If sheet exists, we need to replace it in the workbook object
@@ -98,9 +120,9 @@ class RejectedLogger {
       }
     }
 
-    XLSX.writeFile(workbook, outputPath);
+    XLSX.writeFile(workbook, finalPath);
     console.log(
-      `[RejectedLogger] Saved ${this.rejectedJobs.length} new rejected jobs to ${outputPath}`
+      `[RejectedLogger] Saved ${this.rejectedJobs.length} new rejected jobs to ${finalPath}`
     );
   }
 }

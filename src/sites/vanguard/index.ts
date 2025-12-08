@@ -209,12 +209,6 @@ export async function runVanguardSite(
     console.log(
       `[vanguard] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`
     );
-    rejectedLogger.save(
-      path.join(
-        outputPaths.directory,
-        `rejected_jobs_${outputPaths.dateFolder}.xlsx`
-      )
-    );
   } finally {
     await context.close();
   }

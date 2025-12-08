@@ -202,12 +202,6 @@ export async function runNvoidsSite(
     console.log(
       `[nvoids] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`
     );
-    rejectedLogger.save(
-      path.join(
-        outputPaths.directory,
-        `rejected_jobs_${outputPaths.dateFolder}.xlsx`
-      )
-    );
   } finally {
     await context.close();
   }
@@ -270,6 +264,7 @@ async function scrapeKeywordInNewPage(
   isBackfill: boolean
 ): Promise<void> {
   const page = await context.newPage();
+  await blockAds(page);
   try {
     console.log(`[nvoids][${keyword}] Searching for keyword "${keyword}"`);
     await prepareSearchPage(page, site, keyword);
@@ -388,11 +383,22 @@ async function collectListingRows(
     // Check for Next button
     const nextSelector =
       site.search.selectors.next ?? "a:has-text('Next'):not(table *)";
-    const nextBtn = page.locator(nextSelector);
-    if (await nextBtn.isVisible()) {
-      await nextBtn.click();
-      await page.waitForTimeout(2000);
-      pageIndex++;
+
+    // Use count() to check for existence safely without strict mode violation
+    const nextBtns = page.locator(nextSelector);
+    if ((await nextBtns.count()) > 0) {
+      const nextBtn = nextBtns.first();
+      // We can check visibility on the first element safely
+      if (await nextBtn.isVisible()) {
+        await nextBtn.click();
+        await page.waitForTimeout(2000);
+        pageIndex++;
+      } else {
+        console.log(
+          `[nvoids][${keyword}] Next button present but not visible. Stopping pagination.`
+        );
+        break;
+      }
     } else {
       console.log(
         `[nvoids][${keyword}] No more pages available. Stopping pagination.`
@@ -417,6 +423,15 @@ async function extractJobRow(
     const url = href ? new URL(href, site.search.url).toString() : "";
 
     if (site.disallowPatterns.some((pattern) => url.includes(pattern))) {
+      return null;
+    }
+
+    // Validate URL to ensure it's not an ad redirect
+    if (
+      url.includes("googleads") ||
+      url.includes("doubleclick") ||
+      url.includes("adservice")
+    ) {
       return null;
     }
 
@@ -454,6 +469,7 @@ async function evaluateDetailedJobs(
   for (let i = 0; i < roles.length; i++) {
     const role = roles[i];
     const page = await context.newPage();
+    await blockAds(page);
     try {
       await page.goto(role.url, {
         waitUntil: "domcontentloaded",
@@ -731,4 +747,28 @@ function extractJobId(url: string): string | null {
 
 function createSessionId(): string {
   return `session-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+}
+
+async function blockAds(page: Page): Promise<void> {
+  await page.route("**/*", (route) => {
+    const url = route.request().url();
+    const adDomains = [
+      "googleads",
+      "doubleclick",
+      "googlesyndication",
+      "adservice",
+      "adnxs",
+      "rubiconproject",
+      "criteo",
+      "advertising",
+      "ads",
+      "analytics",
+      "tracker",
+      "pixel",
+    ];
+    if (adDomains.some((d) => url.includes(d))) {
+      return route.abort();
+    }
+    return route.continue();
+  });
 }
