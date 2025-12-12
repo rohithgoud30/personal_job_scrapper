@@ -464,6 +464,68 @@ async function extractJobRow(
   }
 }
 
+// List of personal/free email providers to filter out
+const PERSONAL_EMAIL_DOMAINS = [
+  "gmail.com",
+  "googlemail.com",
+  "outlook.com",
+  "hotmail.com",
+  "live.com",
+  "msn.com",
+  "yahoo.com",
+  "yahoo.co.in",
+  "ymail.com",
+  "aol.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "protonmail.com",
+  "proton.me",
+  "zoho.com",
+  "mail.com",
+  "gmx.com",
+  "gmx.net",
+  "yandex.com",
+  "rediffmail.com",
+  "inbox.com",
+  "fastmail.com",
+];
+
+/**
+ * Extract all email addresses from text
+ */
+function extractEmails(text: string): string[] {
+  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  const matches = text.match(emailRegex) || [];
+  return [...new Set(matches.map((e) => e.toLowerCase()))];
+}
+
+/**
+ * Check if an email is from a personal/free email provider
+ */
+function isPersonalEmail(email: string): boolean {
+  const domain = email.split("@")[1]?.toLowerCase();
+  return PERSONAL_EMAIL_DOMAINS.includes(domain);
+}
+
+/**
+ * Check if job description has only personal emails (no company emails)
+ * Returns true if there are emails but ALL of them are personal
+ * Returns false if there are no emails OR at least one company email exists
+ */
+function hasOnlyPersonalEmails(description: string): {
+  hasEmails: boolean;
+  onlyPersonal: boolean;
+  emails: string[];
+} {
+  const emails = extractEmails(description);
+  if (emails.length === 0) {
+    return { hasEmails: false, onlyPersonal: false, emails: [] };
+  }
+  const allPersonal = emails.every(isPersonalEmail);
+  return { hasEmails: true, onlyPersonal: allPersonal, emails };
+}
+
 async function evaluateDetailedJobs(
   context: BrowserContext,
   roles: SessionRole[],
@@ -481,6 +543,33 @@ async function evaluateDetailedJobs(
         timeout: 60000,
       });
       let description = await extractDescription(page);
+
+      // Check for personal emails only (skip AI evaluation to save costs)
+      const emailCheck = hasOnlyPersonalEmails(description);
+      if (emailCheck.hasEmails && emailCheck.onlyPersonal) {
+        console.log(
+          `[nvoids] Rejected "${
+            role.title
+          }" – Reason: Only personal emails found (${emailCheck.emails.join(
+            ", "
+          )}). No company email.`
+        );
+        rejectedLogger.log({
+          title: role.title,
+          site: site.key,
+          url: role.url,
+          jd: description,
+          reason: `Only personal emails found: ${emailCheck.emails.join(
+            ", "
+          )}. No company email.`,
+          scraped_at: role.scraped_at,
+          type: "detail",
+        });
+        // Add rejected job to seen so it's skipped in future sessions
+        const jobKey = computeJobKey(role);
+        seen.add(jobKey);
+        continue;
+      }
 
       console.log(
         `[nvoids][AI] Detail candidate #${i + 1}/${roles.length} "${
