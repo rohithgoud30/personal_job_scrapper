@@ -115,48 +115,61 @@ export async function findIrrelevantJobIds(
       }/${Math.ceil(entries.length / BATCH_SIZE)} (${batch.length} items)...`
     );
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let attempt = 1; attempt <= 4; attempt++) {
       try {
-        const completion = await client.chat.completions.create({
-          model: env.aiTitleFilterModel || "glm-4.5-air",
-          temperature: 0,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userContent },
-          ],
-        });
+        let modelToUse: string;
+        let isVertex = false;
 
-        const message = completion.choices[0]?.message?.content ?? "{}";
-        const parsed: AiIrrelevantResponse = JSON.parse(message);
-
-        if (Array.isArray(parsed.remove)) {
-          for (const entry of parsed.remove) {
-            const id = (entry?.job_id ?? "").trim();
-            if (!id) continue;
-            combinedRemovalSet.add(id);
-            const reason =
-              typeof entry?.reason === "string" &&
-              entry.reason.trim().length > 0
-                ? entry.reason.trim()
-                : "Marked irrelevant.";
-            combinedReasons.set(id, reason);
-          }
+        if (attempt === 1) {
+          modelToUse = env.aiTitleFilterModel || "gemini-2.5-flash";
+        } else if (attempt === 2) {
+          modelToUse =
+            env.fallbackAiDetailEvalModel || "gemini-3.0-flash-preview";
+        } else if (attempt === 3) {
+          modelToUse = env.secondFallbackAiDetailEvalModel || "glm-4.5-air";
+        } else {
+          // attempt 4
+          modelToUse = "glm-4.5-air";
         }
 
-        if (!combinedRemovalSet.size && Array.isArray(parsed.removeJobIds)) {
-          for (const id of parsed.removeJobIds) {
-            if (typeof id === "string" && id.trim()) {
-              combinedRemovalSet.add(id.trim());
-            }
-          }
+        if (modelToUse.startsWith("gemini-")) {
+          isVertex = true;
+        }
+
+        console.log(`[AI] Attempt ${attempt}: Using model ${modelToUse}...`);
+
+        if (isVertex) {
+          const vertexModel = getVertexModel(modelToUse, systemPrompt);
+          const result = await vertexModel.generateContent({
+            contents: [{ role: "user", parts: [{ text: userContent }] }],
+          });
+          const responseText =
+            result.response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+          const parsed: AiIrrelevantResponse = JSON.parse(responseText);
+          processTitleResponse(parsed, combinedRemovalSet, combinedReasons);
+        } else {
+          const client = getOpenAiClient();
+          const completion = await client.chat.completions.create({
+            model: modelToUse,
+            temperature: 0,
+            response_format: { type: "json_object" },
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userContent },
+            ],
+          });
+
+          const message = completion.choices[0]?.message?.content ?? "{}";
+          const parsed: AiIrrelevantResponse = JSON.parse(message);
+          processTitleResponse(parsed, combinedRemovalSet, combinedReasons);
         }
 
         batchSuccess = true;
         break;
       } catch (error) {
         lastError = error;
-        if (attempt < 3) {
+        console.warn(`[AI] Attempt ${attempt} for title batch failed:`, error);
+        if (attempt < 4) {
           await sleepBackoff(attempt);
         }
       }
@@ -258,6 +271,33 @@ export async function evaluateJobDetail(
   }
 
   throw lastError ?? new Error("Detail AI evaluation failed after retries.");
+}
+
+function processTitleResponse(
+  parsed: AiIrrelevantResponse,
+  combinedRemovalSet: Set<string>,
+  combinedReasons: Map<string, string>
+) {
+  if (Array.isArray(parsed.remove)) {
+    for (const entry of parsed.remove) {
+      const id = (entry?.job_id ?? "").trim();
+      if (!id) continue;
+      combinedRemovalSet.add(id);
+      const reason =
+        typeof entry?.reason === "string" && entry.reason.trim().length > 0
+          ? entry.reason.trim()
+          : "Marked irrelevant.";
+      combinedReasons.set(id, reason);
+    }
+  }
+
+  if (Array.isArray(parsed.removeJobIds)) {
+    for (const id of parsed.removeJobIds) {
+      if (typeof id === "string" && id.trim()) {
+        combinedRemovalSet.add(id.trim());
+      }
+    }
+  }
 }
 
 function sleepBackoff(attempt: number): Promise<void> {
