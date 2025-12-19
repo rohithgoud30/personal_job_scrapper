@@ -5,10 +5,12 @@ dotenv.config();
 export const env = {
   aiApiKey: process.env.AI_API_KEY ?? "",
   aiBaseUrl: process.env.AI_BASE_URL ?? "https://api.openai.com/v1/",
-  aiTitleFilterModel: process.env.AI_TITLE_FILTER_MODEL ?? "gpt-3.5-turbo",
-  aiDetailEvalModel: process.env.AI_DETAIL_EVAL_MODEL ?? "gpt-4",
+  aiTitleFilterModel: process.env.AI_TITLE_FILTER_MODEL ?? "",
+  aiDetailEvalModel: process.env.AI_DETAIL_EVAL_MODEL ?? "",
   fallbackAiDetailEvalModel:
-    process.env.FALLBACK_AI_DETAIL_EVAL_MODEL ?? "glm-4.5-Air",
+    process.env.FALLBACK_AI_DETAIL_EVAL_MODEL ?? "gemini-3.0-flash-preview",
+  secondFallbackAiDetailEvalModel:
+    process.env.SECOND_FALLBACK_AI_DETAIL_EVAL_MODEL ?? "glm-4.5-Air",
   keywordBatchSize: Number(process.env.KEYWORD_BATCH_SIZE ?? "5") || 5,
   runDateOverride: (process.env.TEST_RUN_DATE ?? "").trim(),
 };
