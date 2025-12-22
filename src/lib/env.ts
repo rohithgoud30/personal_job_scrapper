@@ -8,7 +8,7 @@ export const env = {
   aiTitleFilterModel: process.env.AI_TITLE_FILTER_MODEL ?? "",
   aiDetailEvalModel: process.env.AI_DETAIL_EVAL_MODEL ?? "",
   fallbackAiDetailEvalModel:
-    process.env.FALLBACK_AI_DETAIL_EVAL_MODEL ?? "gemini-3.0-flash-preview",
+    process.env.FALLBACK_AI_DETAIL_EVAL_MODEL ?? "gemini-3-flash-preview",
   secondFallbackAiDetailEvalModel:
     process.env.SECOND_FALLBACK_AI_DETAIL_EVAL_MODEL ?? "glm-4.5-Air",
   keywordBatchSize: Number(process.env.KEYWORD_BATCH_SIZE ?? "5") || 5,

@@ -124,7 +124,7 @@ export async function findIrrelevantJobIds(
           modelToUse = env.aiTitleFilterModel || "gemini-2.5-flash";
         } else if (attempt === 2) {
           modelToUse =
-            env.fallbackAiDetailEvalModel || "gemini-3.0-flash-preview";
+            env.fallbackAiDetailEvalModel || "gemini-3-flash-preview";
         } else if (attempt === 3) {
           modelToUse = env.secondFallbackAiDetailEvalModel || "glm-4.5-air";
         } else {
