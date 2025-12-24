@@ -115,21 +115,15 @@ export async function findIrrelevantJobIds(
       }/${Math.ceil(entries.length / BATCH_SIZE)} (${batch.length} items)...`
     );
 
-    for (let attempt = 1; attempt <= 4; attempt++) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         let modelToUse: string;
         let isVertex = false;
 
         if (attempt === 1) {
           modelToUse = env.aiTitleFilterModel || "gemini-2.5-flash";
-        } else if (attempt === 2) {
-          modelToUse =
-            env.fallbackAiDetailEvalModel || "gemini-3-flash-preview";
-        } else if (attempt === 3) {
-          modelToUse = env.secondFallbackAiDetailEvalModel || "glm-4.5-air";
         } else {
-          // attempt 4
-          modelToUse = "glm-4.5-air";
+          modelToUse = env.fallbackAiDetailEvalModel || "glm-4.5-Air";
         }
 
         if (modelToUse.startsWith("gemini-")) {
@@ -169,7 +163,7 @@ export async function findIrrelevantJobIds(
       } catch (error) {
         lastError = error;
         console.warn(`[AI] Attempt ${attempt} for title batch failed:`, error);
-        if (attempt < 4) {
+        if (attempt < 2) {
           await sleepBackoff(attempt);
         }
       }
