@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { VertexAI, GenerativeModel } from "@google-cloud/vertexai";
-import { env, requireEnv } from "./env";
+import { env, requireEnv, requireNumericEnv } from "./env";
 import { loadConfig, SiteConfig } from "./config";
 
 export interface TitleEntry {
@@ -46,11 +46,13 @@ function getOpenAiClient(): OpenAI {
 function getVertexClient(): VertexAI {
   if (!vertexAiClient) {
     const project = process.env.GOOGLE_CLOUD_PROJECT;
-    const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
-
     if (!project) {
-      throw new Error("GOOGLE_CLOUD_PROJECT environment variable is missing.");
+      throw new Error(
+        "GOOGLE_CLOUD_PROJECT environment variable is required but not set. Please add it to your .env file."
+      );
     }
+
+    const location = requireEnv("googleCloudLocation");
 
     vertexAiClient = new VertexAI({
       project,
@@ -84,7 +86,7 @@ export async function findIrrelevantJobIds(
     return { removalSet: new Set(), reasons: new Map() };
   }
 
-  const BATCH_SIZE = 50;
+  const BATCH_SIZE = requireNumericEnv("titleBatchSize");
   const combinedRemovalSet = new Set<string>();
   const combinedReasons = new Map<string, string>();
 
@@ -121,9 +123,9 @@ export async function findIrrelevantJobIds(
         let isVertex = false;
 
         if (attempt === 1) {
-          modelToUse = env.aiTitleFilterModel || "gemini-2.5-flash";
+          modelToUse = requireEnv("aiTitleFilterModel");
         } else {
-          modelToUse = env.fallbackAiDetailEvalModel || "glm-4.5-Air";
+          modelToUse = requireEnv("fallbackAiDetailEvalModel");
         }
 
         if (modelToUse.startsWith("gemini-")) {
@@ -200,7 +202,7 @@ export async function evaluateJobDetail(
 
   const systemPrompt = Array.isArray(prompts) ? prompts.join(" ") : prompts;
 
-  const modelName = env.aiDetailEvalModel || "gemini-2.0-flash-exp";
+  const modelName = requireEnv("aiDetailEvalModel");
   // We don't instantiate the model here anymore because we might switch models/clients in the loop.
 
   const userContent = `Title: ${payload.title}\nCompany: ${payload.company}\nLocation: ${payload.location}\nURL: ${payload.url}\nDescription:\n${payload.description}`;
@@ -208,19 +210,18 @@ export async function evaluateJobDetail(
   let lastError: unknown;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      // Fallback to OpenAI (glm-4.5-air) on any retry (attempt 2+)
+      // Fallback to OpenAI on any retry (attempt 2+)
       // This handles token limits, timeouts, or any other Vertex AI errors.
       const useFallback = attempt >= 2;
+      const fallbackModel = requireEnv("fallbackAiDetailEvalModel");
 
       if (useFallback) {
         console.log(
-          `[AI] Attempt ${attempt}: Using fallback model ${
-            env.fallbackAiDetailEvalModel || "glm-4.5-air"
-          }...`
+          `[AI] Attempt ${attempt}: Using fallback model ${fallbackModel}...`
         );
         const client = getOpenAiClient();
         const completion = await client.chat.completions.create({
-          model: env.fallbackAiDetailEvalModel || "glm-4.5-air",
+          model: fallbackModel,
           temperature: 0,
           response_format: { type: "json_object" },
           messages: [
@@ -295,6 +296,7 @@ function processTitleResponse(
 }
 
 function sleepBackoff(attempt: number): Promise<void> {
-  const delayMs = attempt * 5000;
+  const baseDelay = requireNumericEnv("aiRetryDelayMs");
+  const delayMs = attempt * baseDelay;
   return new Promise((resolve) => setTimeout(resolve, delayMs));
 }

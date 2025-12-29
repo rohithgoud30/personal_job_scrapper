@@ -15,7 +15,7 @@ npx playwright install chromium
 
 # Configure environment
 cp .env.example .env
-# Edit .env and add your ZAI_API_KEY
+# Edit .env with your API keys and configuration (see Configuration section)
 
 # Run a scraper
 npm start -- --site=corptocorp
@@ -25,11 +25,14 @@ npm start -- --site=corptocorp
 
 - **Node.js** v18 or higher
 - **Git**
-- **Zhipu AI API Key** ([Get one here](https://open.bigmodel.cn/))
+- **AI API Key** (OpenAI, Google Vertex AI, Zhipu AI, or any OpenAI-compatible provider)
+- **Google Cloud Project** (if using Vertex AI for Gemini models)
 
 ## ⚙️ Configuration
 
-### 1. Environment Variables
+All configuration is done through **environment variables** (`.env`) and the **config file** (`config.json`). No hardcoded values exist in the code.
+
+### 1. Environment Variables (Required)
 
 Copy `.env.example` to `.env`:
 
@@ -37,81 +40,158 @@ Copy `.env.example` to `.env`:
 cp .env.example .env
 ```
 
-Edit `.env` with your settings:
+Edit `.env` with **all required** settings:
 
 ```env
+# Required: AI API Configuration
 AI_API_KEY=your-api-key-here
-AI_BASE_URL=https://api.openai.com/v1/
-AI_MODEL=gpt-3.5-turbo
-AI_TITLE_FILTER_MODEL=gpt-3.5-turbo
-AI_DETAIL_EVAL_MODEL=gpt-4
+AI_BASE_URL=your-api-base-url-here
+
+# Required: AI Model Configuration
+AI_TITLE_FILTER_MODEL=your-title-filter-model-here
+AI_DETAIL_EVAL_MODEL=your-detail-eval-model-here
+FALLBACK_AI_DETAIL_EVAL_MODEL=your-fallback-model-here
+
+# Required: Google Cloud Configuration (for Vertex AI)
+GOOGLE_CLOUD_PROJECT=your-gcp-project-id
+GOOGLE_CLOUD_LOCATION=your-gcp-location
+
+# Required: Batch Size Configuration
+TITLE_BATCH_SIZE=50
 KEYWORD_BATCH_SIZE=5
+
+# Required: AI Retry Configuration (milliseconds)
+AI_RETRY_DELAY_MS=5000
+
+# Optional: Testing Override
 TEST_RUN_DATE=
 ```
 
-| Variable                        | Description                                           | Required | Example Values                                                                         |
-| ------------------------------- | ----------------------------------------------------- | -------- | -------------------------------------------------------------------------------------- |
-| `AI_API_KEY`                    | API key for your AI provider                          | ✅ Yes   | OpenAI key, Zhipu AI key, etc.                                                         |
-| `AI_BASE_URL`                   | API endpoint URL                                      | ✅ Yes   | `https://api.openai.com/v1/` (OpenAI)<br>`https://api.z.ai/api/coding/paas/v4` (Zhipu) |
-| `AI_TITLE_FILTER_MODEL`         | Model for Stage 1 (title filtering)                   | ✅ Yes   | `gpt-3.5-turbo`, `glm-4.6`                                                             |
-| `AI_DETAIL_EVAL_MODEL`          | Model for Stage 2 (detail evaluation)                 | ✅ Yes   | `gemini-2.0-flash-exp`, `glm-4.5-Air`                                                  |
-| `FALLBACK_AI_DETAIL_EVAL_MODEL` | Fallback model for Stage 2                            | ❌ No    | `glm-4.5-Air`                                                                          |
-| `KEYWORD_BATCH_SIZE`            | Number of parallel keyword searches                   | ❌ No    | Default: `5`                                                                           |
-| `TEST_RUN_DATE`                 | Backfill date (YYYY-MM-DD, leave empty for live runs) | ❌ No    | `2025-11-14` or empty                                                                  |
-
-#### 🔌 Supported AI Providers
-
-This tool works with **any OpenAI-compatible API**, including:
-
-- **OpenAI** (GPT-3.5, GPT-4, etc.)
-
-  ```env
-  AI_BASE_URL=https://api.openai.com/v1/
-  AI_TITLE_FILTER_MODEL=gpt-3.5-turbo
-  AI_DETAIL_EVAL_MODEL=gpt-4
-  ```
-
-- **Zhipu AI** (GLM models) - Current default
-
-  ```env
-  AI_BASE_URL=https://api.z.ai/api/coding/paas/v4
-  AI_TITLE_FILTER_MODEL=glm-4.6
-  AI_DETAIL_EVAL_MODEL=glm-4.5-Air
-  ```
-
-- **Azure OpenAI**, **Anthropic Claude** (via compatibility layers), or any other OpenAI-compatible endpoint
-
-### 2. Site Configuration
-
-All site-specific settings are in `config.json`:
-
-- Search keywords
-- CSS selectors
-- Crawl delays
-- AI filtering rules
+| Variable                        | Description                           | Required |
+| ------------------------------- | ------------------------------------- | -------- |
+| `AI_API_KEY`                    | API key for your AI provider          | ✅ Yes   |
+| `AI_BASE_URL`                   | API endpoint URL                      | ✅ Yes   |
+| `AI_TITLE_FILTER_MODEL`         | Model for Stage 1 (title filtering)   | ✅ Yes   |
+| `AI_DETAIL_EVAL_MODEL`          | Model for Stage 2 (detail evaluation) | ✅ Yes   |
+| `FALLBACK_AI_DETAIL_EVAL_MODEL` | Fallback model for Stage 2            | ✅ Yes   |
+| `GOOGLE_CLOUD_PROJECT`          | GCP project ID for Vertex AI          | ✅ Yes   |
+| `GOOGLE_CLOUD_LOCATION`         | GCP region (e.g., `us-central1`)      | ✅ Yes   |
+| `TITLE_BATCH_SIZE`              | Jobs per AI title filter batch        | ✅ Yes   |
+| `KEYWORD_BATCH_SIZE`            | Parallel keyword searches             | ✅ Yes   |
+| `AI_RETRY_DELAY_MS`             | Retry delay in milliseconds           | ✅ Yes   |
+| `TEST_RUN_DATE`                 | Backfill date (YYYY-MM-DD)            | ❌ No    |
 
 > [!IMPORTANT]
-> You must create a `config.json` file in the root directory.
+> If any required variable is missing, the app will throw a clear error:
+>
+> ```
+> Error: Environment variable aiDetailEvalModel is required but not set. Please add it to your .env file.
+> ```
 
-**Example `config.json` structure for AI prompts:**
+---
+
+### 2. Search Keywords (config.json)
+
+Edit `config.json` → `sharedSearchKeywords` with your target job keywords:
+
+```json
+{
+  "sharedSearchKeywords": [
+    "full stack developer",
+    "React developer",
+    "Node.js engineer",
+    "Java Spring Boot",
+    "Python FastAPI"
+    // Add your own keywords here
+  ]
+}
+```
+
+You can also set **per-site keywords** in each site's `search.criteria.searchKeywords` array.
+
+---
+
+### 3. AI Prompts (config.json)
+
+The AI uses two prompts in `config.json` → `ai.prompts`:
+
+| Prompt             | Purpose                                 |
+| ------------------ | --------------------------------------- |
+| `titleFilter`      | Stage 1: Quickly filter job titles      |
+| `detailEvaluation` | Stage 2: Evaluate full job descriptions |
+
+---
+
+## 🎨 Personalizing AI Prompts
+
+The default prompts are designed for a specific profile. **You should customize them for your background!**
+
+### How to Create Your Own Prompts
+
+1. **Copy the existing prompts** from `config.json` → `ai.prompts`
+2. **Open ChatGPT** (or any AI assistant)
+3. **Paste this template** along with your resume:
+
+```
+I'm using a job scraper that filters jobs using AI. I need to customize the system prompts for my profile.
+
+Here are the current prompts being used:
+---
+TITLE FILTER PROMPT:
+[Paste the titleFilter array content here]
+
+DETAIL EVALUATION PROMPT:
+[Paste the detailEvaluation array content here]
+---
+
+Here is my resume/background:
+[Paste your resume or describe your skills, experience, and job preferences]
+
+My requirements:
+- Target roles: [e.g., "Frontend React developer", "Full stack with Node.js"]
+- Experience level: [e.g., "2-4 years", "entry level"]
+- Visa status: [e.g., "OPT/STEM OPT", "H1B", "US Citizen"]
+- Location preferences: [e.g., "Remote only", "California or Texas"]
+- Employment type: [e.g., "Contract only", "Full-time or Contract"]
+- Technologies to ACCEPT: [e.g., "React, TypeScript, Node.js, Python"]
+- Technologies to REJECT: [e.g., ".NET, C#, Java, legacy systems"]
+
+Please generate customized titleFilter and detailEvaluation prompts that will filter jobs specifically for my profile. Keep the same JSON output format.
+```
+
+4. **Replace the prompts** in your `config.json` with the generated ones
+
+### Example Customization
+
+**For a Junior React Developer looking for remote contract roles:**
 
 ```json
 {
   "ai": {
     "prompts": {
       "titleFilter": [
-        "Your custom title filtering prompt here...",
-        "Another line of instructions..."
+        "You filter job titles for a Junior/Mid-level React frontend developer.",
+        "Keep: React, TypeScript, JavaScript, Next.js, frontend roles.",
+        "Remove: Senior/Lead/Staff/Principal roles, backend-only, .NET, Java, Python, DevOps.",
+        "Return JSON { \"remove\": [ { \"job_id\": string, \"reason\": string } ] }."
       ],
       "detailEvaluation": [
-        "Your custom detail evaluation prompt here...",
-        "Rules for visa, experience, etc..."
+        "Evaluate if this job fits a React frontend developer with 1-3 years experience.",
+        "ACCEPT: React, TypeScript, Next.js, remote/hybrid roles, 0-4 years experience.",
+        "REJECT: 5+ years required, Senior titles, no React stack, on-site only outside CA.",
+        "Return JSON { \"accepted\": boolean, \"reasoning\": string }."
       ]
     }
   }
-  // ... other site configs
 }
 ```
+
+> [!TIP]
+> After updating prompts, run a test with one site to verify your filters work correctly:
+>
+> ```bash
+> npm start -- --site=corptocorp
+> ```
 
 ## 🎯 Usage
 
@@ -130,7 +210,6 @@ npm start -- --site=kforce
 # Randstad USA (Contract jobs)
 npm start -- --site=randstadusa
 
-# Vanguard (Financial services jobs)
 # Vanguard (Financial services jobs)
 npm start -- --site=vanguard
 
@@ -201,20 +280,21 @@ TEST_RUN_DATE=2025-11-14 npm start -- --site=kforce
 
 ### AI Filtering Rules
 
-**Stage 1: Title Filter** (Model: `glm-4.6`)
+**Stage 1: Title Filter** (Model: configured via `AI_TITLE_FILTER_MODEL`)
 
 - Removes: Data Engineer, BI/Analytics, QA/SDET, .NET, C#, Go, Legacy Tech
 - Keeps: Modern web/full-stack roles
+- Customize rules in `config.json` → `ai.prompts.titleFilter`
 
-**Stage 2: Detail Evaluation** (Primary: `gemini-2.0-flash-exp`, Fallback: `glm-4.5-Air`)
+**Stage 2: Detail Evaluation** (Primary: `AI_DETAIL_EVAL_MODEL`, Fallback: `FALLBACK_AI_DETAIL_EVAL_MODEL`)
 
-- **Fallback Logic**: Automatically switches to `glm-4.5-Air` (via OpenAI/Zhipu client) if the primary model fails or on any retry attempt (e.g., token limits, timeouts).
+- **Fallback Logic**: Automatically switches to fallback model if primary fails (e.g., token limits, timeouts).
+- Customize rules in `config.json` → `ai.prompts.detailEvaluation`
 
 - ✅ **Tech Stack**: React, Angular, Next.js, Node.js, Java/Spring Boot, Python/FastAPI
 - ✅ **Experience**: Min <= 5 years (e.g., "3-5 years", "5+", "5 years"). Accepts parallel experience.
 - ✅ **Visa**: Explicitly accepts OPT/STEM OPT, or if not mentioned.
 - ❌ **Rejects**: Min > 5 years (e.g. "6+ years"), H1B/H4/USC/GC-only restrictions, non-web stacks.
-- 🕒 **Posted Date**: Rejects jobs posted > 15 days ago. Requires recent update if posted > 1 day ago.
 
 ## 📂 Output Structure
 
