@@ -344,7 +344,7 @@ async function scrapeKeyword(
     await page.waitForFunction(
       ({ selector }) => document.querySelectorAll(selector).length > 0,
       { selector: selectors.card },
-      { timeout: 60000 }
+      { timeout: 15000 }
     );
   }
 
@@ -434,7 +434,7 @@ async function collectListingRows(
         ({ selector, previousCount: prev }) =>
           document.querySelectorAll(selector).length > 0, // Just wait for load, or maybe wait for count change if it's SPA?
         { selector: selectors.card, previousCount: processedCount },
-        { timeout: 60000 }
+        { timeout: 15000 }
       );
       // Vanguard seems to be a full page reload or at least significant DOM change.
       // Let's wait for network idle to be safe.
@@ -539,35 +539,33 @@ export async function extractDescription(
   page: Page,
   site: SiteConfig
 ): Promise<string> {
-  // Use a fallback if no specific description selector is configured,
-  // but we know Vanguard has one in config.
-  const selector = site.search.selectors.card
-    ? "div.fusion-tabs div.fusion-tab-content" // Fallback/Default if not in config, but it IS in config.
-    : "body";
+  // Try multiple selectors for job description on Vanguard
+  const descriptionSelectors = [
+    "div.fusion-tabs div.fusion-tab-content",
+    "div.job-description",
+    "div.jobdescription",
+    "[data-automation-id='jobDescriptionModule']",
+    "article",
+    "main",
+  ];
 
-  // Actually, let's just use what's in config or a hardcoded fallback for now
-  // since SearchSelectors interface might not have 'description' explicitly typed
-  // (it's not in the interface I saw earlier, wait let me check interface).
-  // Interface SearchSelectors in config.ts does NOT have 'description'.
-  // So I can't access site.search.selectors.description directly if typescript checks it.
-  // I should add it to the interface or just use a hardcoded selector here since this is site-specific code.
-  // But wait, I put it in config.json.
-  // Let's check config.ts again.
-
-  const descriptionSelector = "div.fusion-tabs div.fusion-tab-content";
-
-  const locator = page.locator(descriptionSelector).first();
-  if (await locator.count()) {
-    try {
-      const text = await locator.innerText({ timeout: 5000 });
-      if (text.trim()) {
-        return text.trim();
+  for (const selector of descriptionSelectors) {
+    const locator = page.locator(selector).first();
+    if (await locator.count()) {
+      try {
+        const text = await locator.innerText({ timeout: 5000 });
+        if (text.trim() && text.trim().length > 100) {
+          // Truncate to max 50k chars to avoid overwhelming AI
+          return text.trim().slice(0, 50000);
+        }
+      } catch (_) {
+        // Try next selector
       }
-    } catch (_) {
-      // ignore
     }
   }
-  return await page.content();
+
+  // Return a brief message instead of full page HTML
+  return "[Description not available - selector not found]";
 }
 
 async function filterTitlesWithAi(

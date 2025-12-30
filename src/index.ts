@@ -112,13 +112,24 @@ async function cleanupOldData(
   }
 }
 
+function siteMatchesFilter(site: SiteConfig, filter: Set<string>): boolean {
+  // Match by key (e.g., "vanguard")
+  if (filter.has(site.key)) return true;
+  // Match by host without .com (e.g., "vanguardjobs" from "vanguardjobs.com")
+  const hostWithoutTld = site.host.replace(/\.\w+$/, "");
+  if (filter.has(hostWithoutTld)) return true;
+  // Match by full host (e.g., "vanguardjobs.com")
+  if (filter.has(site.host)) return true;
+  return false;
+}
+
 async function runAllSites(
   siteFilter: Set<string> | undefined,
   options: RunOptions
 ): Promise<void> {
   const config = loadConfig();
   const targets = siteFilter
-    ? config.sites.filter((site) => siteFilter.has(site.key))
+    ? config.sites.filter((site) => siteMatchesFilter(site, siteFilter))
     : config.sites;
 
   if (!targets.length) {
