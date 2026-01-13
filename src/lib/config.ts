@@ -85,6 +85,7 @@ export interface SearchSelectors {
   allFilters?: string;
   postedDateRadio?: string;
   employmentTypeCheckbox?: string;
+  workplaceTypeRemote?: string;
   postedDateDetail?: string;
   applyFilters?: string;
   description?: string;
@@ -117,9 +118,7 @@ export function loadConfig(customPath?: string): ConfigFile {
   const shared = normalizeKeywordsInput(data.sharedSearchKeywords);
   if (shared.length) {
     data.sites = data.sites.map((site) => {
-      const existing = normalizeKeywordsInput(
-        site.search.criteria.searchKeywords
-      );
+      const existing = normalizeKeywordsInput(site.search.criteria.searchKeywords);
       if (existing.length) {
         return site;
       }
@@ -147,9 +146,7 @@ export function getSiteConfig(config: ConfigFile, key: string): SiteConfig {
   return site;
 }
 
-function normalizeKeywordsInput(
-  value: string | string[] | undefined
-): string[] {
+function normalizeKeywordsInput(value: string | string[] | undefined): string[] {
   if (!value) return [];
   const arr = Array.isArray(value) ? value : [value];
   return arr.map((k) => k.trim()).filter(Boolean);

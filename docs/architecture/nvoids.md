@@ -10,6 +10,10 @@ The `nvoids` scraper targets **Nvoids**, a job aggregator site. It is designed t
   - Checks if the job was posted "Today" in either **IST (India Standard Time)** or **EST (Eastern Standard Time)**.
   - Handles date formats like `HH:MM AM/PM DD-Mon-YY` (e.g., `03:18 AM 02-Dec-25`).
   - Supports legacy `MM/DD/YYYY` format.
+- **Remote C2C Only Filter** (New):
+  - **Remote Detection**: Filters jobs at the listing stage based on title and location containing: "Remote", "Work from Home", "WFH", "Telecommute", or "Remote, Remote, USA" pattern.
+  - **C2C Detection**: Parses the "Hire type:" field in job details for "C2C" or "Corp to Corp". Also checks for C2C mentions anywhere in the description as a fallback.
+  - Non-remote and non-C2C jobs are automatically rejected.
 - **AI Filtering**:
   - **Stage 1 (Title)**: Filters out irrelevant titles (e.g., non-tech, senior management if not targeted).
   - **Stage 2 (Detail)**: Extracts the full job description and uses AI to evaluate tech stack, experience, and visa requirements.
@@ -63,3 +67,12 @@ Rejected jobs are logged in:
 `data/nvoids/<date>/rejected_jobs_<date>.xlsx`
 
 > [!NOTE] > **Cost Optimization**: `seen.json` stores both accepted AND rejected job IDs. Previously rejected jobs are skipped in future runs, saving AI API costs.
+
+## Filtering Logic
+
+The scraper applies filters in the following order:
+
+1. **Remote Filter** (Listing Stage): Jobs must have "Remote" in title or location
+2. **Personal Email Filter** (Detail Stage): Rejects jobs with only personal emails (except PA)
+3. **C2C Filter** (Detail Stage): Jobs must have C2C in Hire Type
+4. **AI Filter** (Detail Stage): Final relevance evaluation

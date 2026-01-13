@@ -2,7 +2,6 @@ import fs from "fs";
 import path from "path";
 import { BrowserContext, Locator, Page, chromium } from "playwright";
 import { OutputConfig, SiteConfig } from "../../lib/config";
-import { acceptCookieConsent } from "../../lib/cookies";
 import { appendJobRows, JobRow } from "../../lib/csv";
 import { computeJobKey, loadSeenStore, saveSeenStore } from "../../lib/dedupe";
 import {
@@ -271,7 +270,7 @@ async function scrapeKeywordInNewPage(
   }
 }
 
-async function prepareSearchPage(page: Page, site: SiteConfig, keyword: string): Promise<void> {
+async function prepareSearchPage(page: Page, site: SiteConfig, _keyword: string): Promise<void> {
   await page.goto(site.search.url, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1000);
 }
@@ -395,6 +394,11 @@ async function extractJobRow(row: Locator, site: SiteConfig): Promise<JobRow | n
     const locationCell = row.locator("td:nth-child(2)");
     const locationText = await locationCell.innerText().catch(() => "");
 
+    // Filter for remote jobs only
+    if (!isRemoteJob(rawTitle, locationText)) {
+      return null;
+    }
+
     const postedCell = row.locator("td:nth-child(3)");
     const postedText = await postedCell.innerText().catch(() => "");
 
@@ -411,7 +415,7 @@ async function extractJobRow(row: Locator, site: SiteConfig): Promise<JobRow | n
       job_id: jobId ?? undefined,
       scraped_at: getEasternTimeLabel(),
     };
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -570,6 +574,23 @@ async function evaluateDetailedJobs(
         );
       }
 
+      // Check for C2C employment type (required filter)
+      if (!isC2CJob(description)) {
+        console.log(`[nvoids] Rejected "${role.title}" – Not C2C employment type`);
+        rejectedLogger.log({
+          title: role.title,
+          site: site.key,
+          url: role.url,
+          jd: description,
+          reason: "Not C2C employment type (looking for C2C only)",
+          scraped_at: role.scraped_at,
+          type: "detail",
+        });
+        const jobKey = computeJobKey(role);
+        seen.add(jobKey);
+        continue;
+      }
+
       console.log(
         `[nvoids][AI] Detail candidate #${i + 1}/${roles.length} "${
           role.title
@@ -639,7 +660,7 @@ export async function extractDescription(page: Page): Promise<string> {
         if (text.trim()) {
           return text.trim();
         }
-      } catch (_) {
+      } catch {
         continue;
       }
     }
@@ -809,6 +830,42 @@ function extractJobId(url: string): string | null {
   // URL structure: https://jobs.nvoids.com/job_details.jsp?id=2961497&uid=...
   const match = url.match(/[?&]id=(\d+)/);
   return match ? match[1] : null;
+}
+
+/**
+ * Check if job is remote based on title and location
+ * Used for early filtering at the listing stage
+ */
+function isRemoteJob(title: string, location: string): boolean {
+  const text = `${title} ${location}`.toUpperCase();
+  return (
+    text.includes("REMOTE") ||
+    text.includes("WORK FROM HOME") ||
+    text.includes("WFH") ||
+    text.includes("TELECOMMUTE") ||
+    location.toUpperCase().includes("REMOTE, REMOTE")
+  );
+}
+
+/**
+ * Check if job is C2C (Corp to Corp) from job description
+ * Looks for "Hire type:" line containing "C2C"
+ */
+function isC2CJob(description: string): boolean {
+  // Pattern: "Hire type : CTH / C2C / FTE" or "Hire type: C2C"
+  const hireTypeMatch = description.match(/hire\s*type\s*[:：]\s*([^\n]+)/i);
+  if (hireTypeMatch) {
+    const hireTypes = hireTypeMatch[1].toUpperCase();
+    return hireTypes.includes("C2C") || hireTypes.includes("CORP TO CORP");
+  }
+
+  // Fallback: check anywhere in description for C2C mentions
+  const upperDesc = description.toUpperCase();
+  return (
+    upperDesc.includes("C2C") ||
+    upperDesc.includes("CORP TO CORP") ||
+    upperDesc.includes("CORP-TO-CORP")
+  );
 }
 
 function createSessionId(): string {

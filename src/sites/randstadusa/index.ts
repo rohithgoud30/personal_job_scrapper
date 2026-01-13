@@ -12,11 +12,7 @@ import {
   OutputPaths,
   SessionPaths,
 } from "../../lib/paths";
-import {
-  findSessionById,
-  parseDateFolderLabel,
-  readSessionCsv,
-} from "../../lib/session";
+import { findSessionById, parseDateFolderLabel, readSessionCsv } from "../../lib/session";
 import { getEasternDateLabel, getEasternTimeLabel } from "../../lib/time";
 import { env, getRunDateOverride } from "../../lib/env";
 import { sleep } from "../../lib/throttle";
@@ -38,9 +34,7 @@ type RouteHit = {
   id?: string;
   title?: string;
   shortLocation?: string;
-  location?:
-    | string
-    | { city?: string; state?: string; stateAbbreviation?: string };
+  location?: string | { city?: string; state?: string; stateAbbreviation?: string };
   city?: string;
   postedDate?: string;
   jobType?: string;
@@ -56,7 +50,7 @@ type RouteHit = {
 export async function runRandstadSite(
   site: SiteConfig,
   output: OutputConfig,
-  options: RunOptions = {}
+  options: RunOptions = {},
 ): Promise<void> {
   const resumeSessionId = options.resumeSessionId?.trim();
   const skipBatchDelay = Boolean(options.skipBatchPause);
@@ -79,8 +73,8 @@ export async function runRandstadSite(
       console.warn(
         `[randstad] Session ${resumeSessionId} not found under ${path.join(
           output.root,
-          site.host
-        )}.`
+          site.host,
+        )}.`,
       );
       return;
     }
@@ -107,15 +101,11 @@ export async function runRandstadSite(
     }
 
     console.log(
-      `[randstad] Resuming AI-only run for session ${resumeSessionId} (date folder ${outputPaths.dateFolder}).`
+      `[randstad] Resuming AI-only run for session ${resumeSessionId} (date folder ${outputPaths.dateFolder}).`,
     );
   } else {
     const dateLabel = getEasternDateLabel(runDate);
-    console.log(
-      `[randstad] ${
-        isBackfill ? "Backfill" : "Live"
-      } run using date ${dateLabel}.`
-    );
+    console.log(`[randstad] ${isBackfill ? "Backfill" : "Live"} run using date ${dateLabel}.`);
 
     outputPaths = buildOutputPaths(output, site, runDate);
     const sessionId = createSessionId();
@@ -142,7 +132,7 @@ export async function runRandstadSite(
         sessionPaths.sessionId,
         runDate,
         isBackfill,
-        skipBatchDelay
+        skipBatchDelay,
       );
 
       if (!staged.size) {
@@ -152,22 +142,16 @@ export async function runRandstadSite(
 
       stagedArray = Array.from(staged.values());
     } else if (!stagedArray.length) {
-      console.log(
-        `[randstad] Session ${resumeSessionId} has no staged roles to evaluate.`
-      );
+      console.log(`[randstad] Session ${resumeSessionId} has no staged roles to evaluate.`);
       return;
     }
 
-    console.log(
-      `[randstad][AI] Running title filter on ${stagedArray.length} staged roles...`
-    );
+    console.log(`[randstad][AI] Running title filter on ${stagedArray.length} staged roles...`);
     await writeSessionRoles(sessionPaths, stagedArray);
 
     const { removalSet, reasons } = await filterTitlesWithAi(stagedArray);
 
-    const filtered = stagedArray.filter(
-      (row) => !removalSet.has(row.job_id ?? row.url)
-    );
+    const filtered = stagedArray.filter((row) => !removalSet.has(row.job_id ?? row.url));
     if (removalSet.size) {
       console.log("[randstad][AI] Title rejections:");
       let rejectIndex = 1;
@@ -176,7 +160,7 @@ export async function runRandstadSite(
         if (!removalSet.has(key)) continue;
         const reason = reasons.get(key) ?? "Marked irrelevant.";
         console.log(
-          `[randstad][AI][Title Reject #${rejectIndex}] "${row.title}" (${row.location}) – ${reason}`
+          `[randstad][AI][Title Reject #${rejectIndex}] "${row.title}" (${row.location}) – ${reason}`,
         );
         rejectedLogger.log({
           title: row.title,
@@ -205,15 +189,10 @@ export async function runRandstadSite(
     console.log(
       `[randstad][AI] Title filter removed ${
         stagedArray.length - filtered.length
-      } roles. ${filtered.length} remain for detail evaluation.`
+      } roles. ${filtered.length} remain for detail evaluation.`,
     );
 
-    const acceptedRows = await evaluateDetailedJobs(
-      context,
-      filtered,
-      seen,
-      site
-    );
+    const acceptedRows = await evaluateDetailedJobs(context, filtered, seen, site);
     if (!acceptedRows.length) {
       console.log("[randstad] No jobs approved after detail evaluation.");
       await saveSeenStore(outputPaths.seenFile, seen);
@@ -222,9 +201,7 @@ export async function runRandstadSite(
 
     await appendJobRows(outputPaths.csvFile, acceptedRows);
     await saveSeenStore(outputPaths.seenFile, seen);
-    console.log(
-      `[randstad] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`
-    );
+    console.log(`[randstad] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`);
   } finally {
     await context.close();
   }
@@ -239,13 +216,11 @@ async function scrapeKeywordsInBatches(
   sessionId: string,
   runDate: Date,
   isBackfill: boolean,
-  skipBatchDelay: boolean
+  skipBatchDelay: boolean,
 ): Promise<void> {
   const batchSize = env.keywordBatchSize;
   if (skipBatchDelay) {
-    console.log(
-      "[randstad] Batch wait disabled; running keyword batches back-to-back."
-    );
+    console.log("[randstad] Batch wait disabled; running keyword batches back-to-back.");
   }
 
   for (let i = 0; i < keywords.length; i += batchSize) {
@@ -260,16 +235,14 @@ async function scrapeKeywordsInBatches(
           staged,
           sessionId,
           runDate,
-          isBackfill
-        )
-      )
+          isBackfill,
+        ),
+      ),
     );
 
     const hasMoreBatches = i + batchSize < keywords.length;
     if (!isBackfill && hasMoreBatches && !skipBatchDelay) {
-      console.log(
-        "[randstad] Sleeping 25s before next keyword batch (polite crawl)."
-      );
+      console.log("[randstad] Sleeping 25s before next keyword batch (polite crawl).");
       await sleep(25);
     }
   }
@@ -283,7 +256,7 @@ async function scrapeKeywordInNewPage(
   staged: Map<string, SessionRole>,
   sessionId: string,
   runDate: Date,
-  isBackfill: boolean
+  _isBackfill: boolean,
 ): Promise<void> {
   const page = await context.newPage();
   try {
@@ -304,9 +277,7 @@ async function scrapeKeywordInNewPage(
       });
       added += 1;
     }
-    console.log(
-      `[randstad] Keyword "${keyword}": scraped ${roles.length}, staged ${added}`
-    );
+    console.log(`[randstad] Keyword "${keyword}": scraped ${roles.length}, staged ${added}`);
   } catch (error) {
     console.error(`[randstad] Failed keyword "${keyword}"`, error);
   } finally {
@@ -314,11 +285,7 @@ async function scrapeKeywordInNewPage(
   }
 }
 
-async function prepareSearchPage(
-  page: Page,
-  site: SiteConfig,
-  keyword: string
-): Promise<void> {
+async function prepareSearchPage(page: Page, site: SiteConfig, keyword: string): Promise<void> {
   const base = new URL(site.search.url);
   const slug =
     keyword
@@ -330,6 +297,7 @@ async function prepareSearchPage(
 
   await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
   await acceptCookieConsent(page, site.cookieConsent);
+  await applyRemoteFilter(page);
   await applyContractFilter(page);
   await ensureDateSort(page, site.search.selectors);
 }
@@ -338,7 +306,7 @@ async function collectRolesWithLoadMore(
   page: Page,
   site: SiteConfig,
   runDate: Date,
-  keyword: string
+  keyword: string,
 ): Promise<JobRow[]> {
   const roles: JobRow[] = [];
   const maxLoads = Math.max(1, site.run.maxPages);
@@ -371,7 +339,7 @@ async function collectRolesWithLoadMore(
       const lastRow = allPageRows[allPageRows.length - 1];
       if (lastRow.posted !== todayLabel) {
         console.log(
-          `[randstad][${keyword}] Last item date '${lastRow.posted}' is not today. Stopping pagination.`
+          `[randstad][${keyword}] Last item date '${lastRow.posted}' is not today. Stopping pagination.`,
         );
         stopPagination = true;
       }
@@ -383,9 +351,7 @@ async function collectRolesWithLoadMore(
       return true;
     });
 
-    const unique = validRows.filter(
-      (row) => !roles.some((r) => r.url === row.url)
-    );
+    const unique = validRows.filter((row) => !roles.some((r) => r.url === row.url));
     roles.push(...unique);
 
     if (stopPagination) {
@@ -408,9 +374,7 @@ async function collectRolesWithLoadMore(
       break;
     }
 
-    await page
-      .waitForTimeout(site.run.pageDelaySeconds * 1000)
-      .catch(() => undefined);
+    await page.waitForTimeout(site.run.pageDelaySeconds * 1000).catch(() => undefined);
 
     const afterHits = await extractHits(page);
     const afterDom = await extractDomRows(page, site);
@@ -424,11 +388,7 @@ async function collectRolesWithLoadMore(
   return roles;
 }
 
-async function loadMore(
-  page: Page,
-  previousCount: number,
-  keyword: string
-): Promise<boolean> {
+async function loadMore(page: Page, previousCount: number, keyword: string): Promise<boolean> {
   const loadMoreSelector = [
     'button:has-text("view more")',
     'button:has-text("view")',
@@ -438,10 +398,7 @@ async function loadMore(
   ].join(", ");
 
   const button = page.locator(loadMoreSelector).first();
-  if (
-    (await button.count()) === 0 ||
-    !(await button.isVisible().catch(() => false))
-  ) {
+  if ((await button.count()) === 0 || !(await button.isVisible().catch(() => false))) {
     return false;
   }
 
@@ -457,18 +414,15 @@ async function loadMore(
       ({ count }) => {
         const data = (window as any).__ROUTE_DATA__;
         if (!data?.searchResults?.hits) return false;
-        return (
-          Array.isArray(data.searchResults.hits) &&
-          data.searchResults.hits.length > count
-        );
+        return Array.isArray(data.searchResults.hits) && data.searchResults.hits.length > count;
       },
       { count: previousCount },
-      { timeout: 12000 }
+      { timeout: 12000 },
     );
     return true;
   } catch {
     console.warn(
-      `[randstad][${keyword}] Load more did not increase hit count; stopping pagination.`
+      `[randstad][${keyword}] Load more did not increase hit count; stopping pagination.`,
     );
     return false;
   }
@@ -479,10 +433,7 @@ async function extractHits(page: Page): Promise<RouteHit[]> {
     .waitForFunction(
       () => {
         const data = (window as any).__ROUTE_DATA__;
-        if (
-          data?.searchResults?.hits &&
-          Array.isArray(data.searchResults.hits)
-        ) {
+        if (data?.searchResults?.hits && Array.isArray(data.searchResults.hits)) {
           return data.searchResults.hits as RouteHit[];
         }
 
@@ -515,7 +466,7 @@ async function extractHits(page: Page): Promise<RouteHit[]> {
 
         return null;
       },
-      { timeout: 20000 }
+      { timeout: 20000 },
     )
     .catch(() => null);
 
@@ -544,17 +495,13 @@ async function extractDomRows(page: Page, site: SiteConfig): Promise<JobRow[]> {
   if (count > 0) {
     for (let i = 0; i < count; i++) {
       const card = cards.nth(i);
-      const link = card
-        .locator('h3.cards__title a.cards__link, a[href*="/jobs/"]')
-        .first();
+      const link = card.locator('h3.cards__title a.cards__link, a[href*="/jobs/"]').first();
       if ((await link.count()) === 0) {
         continue;
       }
       const href = (await link.getAttribute("href").catch(() => "")) ?? "";
       if (!href) continue;
-      const url = href.startsWith("http")
-        ? href
-        : new URL(href, site.search.url).toString();
+      const url = href.startsWith("http") ? href : new URL(href, site.search.url).toString();
       if (site.disallowPatterns.some((pattern) => url.includes(pattern))) {
         continue;
       }
@@ -563,7 +510,7 @@ async function extractDomRows(page: Page, site: SiteConfig): Promise<JobRow[]> {
       const location = (
         await card
           .locator(
-            '.cards__meta-item:has(svg[aria-label*="location" i]), .cards__meta-item, [data-automation-id*="location"], .job-location, .job__location, [class*="location"]'
+            '.cards__meta-item:has(svg[aria-label*="location" i]), .cards__meta-item, [data-automation-id*="location"], .job-location, .job__location, [class*="location"]',
           )
           .first()
           .innerText()
@@ -573,7 +520,7 @@ async function extractDomRows(page: Page, site: SiteConfig): Promise<JobRow[]> {
         (
           await card
             .locator(
-              '.cards__date, [data-automation-id*="posted"], .job-date, time, span:has-text("posted"), p:has-text("posted")'
+              '.cards__date, [data-automation-id*="posted"], .job-date, time, span:has-text("posted"), p:has-text("posted")',
             )
             .first()
             .innerText()
@@ -596,16 +543,14 @@ async function extractDomRows(page: Page, site: SiteConfig): Promise<JobRow[]> {
     const direct = (await page.evaluate(
       ({ baseUrl, disallow }: { baseUrl: string; disallow: string[] }) => {
         const anchors = Array.from(
-          document.querySelectorAll('a[href*="/jobs/"]')
+          document.querySelectorAll('a[href*="/jobs/"]'),
         ) as HTMLAnchorElement[];
         const seen = new Set<string>();
         const rows: { title: string; url: string }[] = [];
         for (const a of anchors) {
           const href = a.getAttribute("href") || "";
           if (!href || seen.has(href)) continue;
-          const absolute = href.startsWith("http")
-            ? href
-            : new URL(href, baseUrl).toString();
+          const absolute = href.startsWith("http") ? href : new URL(href, baseUrl).toString();
           if (disallow.some((pattern) => absolute.includes(pattern))) continue;
           const text = (a.textContent || "").trim();
           if (!text) continue;
@@ -614,7 +559,7 @@ async function extractDomRows(page: Page, site: SiteConfig): Promise<JobRow[]> {
         }
         return rows;
       },
-      { baseUrl: site.search.url, disallow: site.disallowPatterns }
+      { baseUrl: site.search.url, disallow: site.disallowPatterns },
     )) as { title: string; url: string }[];
 
     for (const row of (direct || []).slice(0, 30)) {
@@ -633,11 +578,7 @@ async function extractDomRows(page: Page, site: SiteConfig): Promise<JobRow[]> {
   return rows;
 }
 
-function mapHitToJobRow(
-  hit: RouteHit,
-  site: SiteConfig,
-  referenceDate: Date
-): JobRow | null {
+function mapHitToJobRow(hit: RouteHit, site: SiteConfig, referenceDate: Date): JobRow | null {
   if (!hit?.title || (!hit.url && !hit.detailsUrl)) {
     return null;
   }
@@ -655,18 +596,14 @@ function mapHitToJobRow(
   const jobTypeCandidates = [
     hit.jobType,
     hit.employmentType,
-    ...(Array.isArray((hit as any).employmentTypes)
-      ? (hit as any).employmentTypes
-      : []),
+    ...(Array.isArray((hit as any).employmentTypes) ? (hit as any).employmentTypes : []),
   ]
     .filter(Boolean)
     .map((value) => value.toString().toLowerCase());
 
   if (jobTypeFilters.length && jobTypeCandidates.length) {
     const matchesType = jobTypeFilters.some((type) =>
-      jobTypeCandidates.some((candidate) =>
-        candidate.includes(type.toLowerCase())
-      )
+      jobTypeCandidates.some((candidate) => candidate.includes(type.toLowerCase())),
     );
     if (!matchesType) {
       return null;
@@ -677,16 +614,15 @@ function mapHitToJobRow(
     typeof hit.shortLocation === "string"
       ? hit.shortLocation
       : typeof hit.location === "string"
-      ? hit.location
-      : (hit as any).jobLocation?.city
-      ? [
-          (hit as any).jobLocation.city,
-          (hit as any).jobLocation.stateAbbreviation ||
-            (hit as any).jobLocation.state,
-        ]
-          .filter(Boolean)
-          .join(", ")
-      : "";
+        ? hit.location
+        : (hit as any).jobLocation?.city
+          ? [
+              (hit as any).jobLocation.city,
+              (hit as any).jobLocation.stateAbbreviation || (hit as any).jobLocation.state,
+            ]
+              .filter(Boolean)
+              .join(", ")
+          : "";
 
   const posted = normalizeHitPostedDate(hit, referenceDate);
 
@@ -702,23 +638,7 @@ function mapHitToJobRow(
   };
 }
 
-function applyPostedDateFilter(
-  row: JobRow,
-  referenceDate: Date,
-  todayLabel: string,
-  requireToday: boolean
-): JobRow | null {
-  const normalizedPosted = normalizeRandstadDate(row.posted, referenceDate);
-  if (normalizedPosted) {
-    row.posted = normalizedPosted;
-  }
-  if (requireToday && row.posted !== todayLabel) {
-    return null;
-  }
-  return row;
-}
-
-function normalizeHitPostedDate(hit: RouteHit, referenceDate: Date): string {
+function normalizeHitPostedDate(hit: RouteHit, _referenceDate: Date): string {
   const candidates: Array<number | string | undefined> = [
     hit.postedDate,
     hit.createdDate,
@@ -750,10 +670,7 @@ function normalizeHitPostedDate(hit: RouteHit, referenceDate: Date): string {
   return "";
 }
 
-function normalizeRandstadDate(
-  posted: string | number,
-  referenceDate: Date
-): string | null {
+function normalizeRandstadDate(posted: string | number, referenceDate: Date): string | null {
   if (posted === undefined || posted === null) return null;
 
   if (typeof posted === "number" && !Number.isNaN(posted)) {
@@ -794,16 +711,15 @@ async function parsePostedFromCard(card: Locator): Promise<string> {
   const trimmed = text.trim();
 
   // Match patterns like "posted November 17, 2025"
-  const namedMonth = trimmed.match(
-    /posted[^\d]*([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})/i
-  );
+  const namedMonth = trimmed.match(/posted[^\d]*([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})/i);
   if (namedMonth) {
     const [, monthName, day, year] = namedMonth;
     const parsed = new Date(`${monthName} ${day}, ${year}`);
     if (!Number.isNaN(parsed.getTime())) {
-      return `${String(parsed.getMonth() + 1).padStart(2, "0")}/${String(
-        day
-      ).padStart(2, "0")}/${year}`;
+      return `${String(parsed.getMonth() + 1).padStart(2, "0")}/${String(day).padStart(
+        2,
+        "0",
+      )}/${year}`;
     }
   }
 
@@ -825,7 +741,7 @@ async function evaluateDetailedJobs(
   context: BrowserContext,
   roles: SessionRole[],
   seen: Set<string>,
-  site: SiteConfig
+  site: SiteConfig,
 ): Promise<JobRow[]> {
   const accepted: JobRow[] = [];
   for (let i = 0; i < roles.length; i++) {
@@ -848,7 +764,7 @@ async function evaluateDetailedJobs(
       console.log(
         `[randstad][AI] Detail candidate #${i + 1}/${roles.length} "${
           role.title
-        }" (${role.location}) – description length ${description.length} chars.`
+        }" (${role.location}) – description length ${description.length} chars.`,
       );
       const detailResult = await evaluateJobDetail(
         {
@@ -858,14 +774,14 @@ async function evaluateDetailedJobs(
           url: role.url,
           description,
         },
-        site
+        site,
       );
 
       if (!detailResult.accepted) {
         console.log(
           `[randstad][AI] Rejected "${role.title}" – Reason: ${
             detailResult.reasoning || "Model marked as not relevant."
-          }`
+          }`,
         );
         rejectedLogger.log({
           title: role.title,
@@ -890,17 +806,14 @@ async function evaluateDetailedJobs(
       seen.add(jobKey);
       accepted.push(role);
     } catch (error) {
-      console.error(
-        `[randstad] Failed to evaluate detail for ${role.url}`,
-        error
-      );
+      console.error(`[randstad] Failed to evaluate detail for ${role.url}`, error);
     } finally {
       await page.close();
     }
   }
 
   console.log(
-    `[randstad][AI] Detail evaluation accepted ${accepted.length} roles out of ${roles.length}.`
+    `[randstad][AI] Detail evaluation accepted ${accepted.length} roles out of ${roles.length}.`,
   );
   return accepted;
 }
@@ -932,9 +845,7 @@ export async function extractDescription(page: Page): Promise<string> {
   return await page.content();
 }
 
-async function filterTitlesWithAi(
-  rows: SessionRole[]
-): Promise<TitleFilterResult> {
+async function filterTitlesWithAi(rows: SessionRole[]): Promise<TitleFilterResult> {
   const entries: TitleEntry[] = rows.map((row) => ({
     title: row.title,
     company: row.company,
@@ -945,10 +856,7 @@ async function filterTitlesWithAi(
   return findIrrelevantJobIds(entries);
 }
 
-async function writeSessionRoles(
-  sessionPaths: SessionPaths,
-  rows: SessionRole[]
-): Promise<void> {
+async function writeSessionRoles(sessionPaths: SessionPaths, rows: SessionRole[]): Promise<void> {
   const headers = [
     "session_id",
     "keyword",
@@ -973,7 +881,7 @@ async function writeSessionRoles(
       row.url,
       row.job_id ?? "",
       row.scraped_at,
-    ].join(",")
+    ].join(","),
   );
 
   const payload = [headers.join(","), ...lines].join("\n") + "\n";
@@ -991,42 +899,35 @@ function escapeCsv(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
-async function fillKeyword(
-  page: Page,
-  selector: string,
-  keyword: string
-): Promise<void> {
-  const input = await pickFirstAvailable(page, [
-    selector,
-    'input[placeholder*="keyword" i]',
-    'input[placeholder*="job" i]',
-    'input[name*="keyword" i]',
-    'input[type="search"]',
-  ]);
-  if (!input) {
-    throw new Error("Keyword input not found.");
-  }
-  await input.fill("");
-  await input.type(keyword, { delay: 20 });
-}
+async function applyRemoteFilter(page: Page): Promise<void> {
+  const remoteCheckbox = page.locator("input#is-remote");
 
-async function fillLocation(
-  page: Page,
-  selector: string | undefined,
-  value: string
-): Promise<void> {
-  if (!selector) return;
-  const input = page.locator(selector).first();
-  if ((await input.count()) === 0) {
+  // Wait for the checkbox to be available
+  await remoteCheckbox.waitFor({ state: "attached", timeout: 5000 }).catch(() => undefined);
+
+  if ((await remoteCheckbox.count()) === 0) {
+    console.warn("[randstad] Remote checkbox not found; skipping remote filter.");
     return;
   }
-  await input.click({ delay: 20 });
-  await page.keyboard
-    .press("Meta+a")
-    .catch(() => page.keyboard.press("Control+a"));
-  await page.keyboard.press("Backspace");
-  await input.type(value, { delay: 20 });
-  await page.keyboard.press("Enter");
+
+  const isChecked = await remoteCheckbox.isChecked().catch(() => false);
+  if (!isChecked) {
+    try {
+      // Try clicking the checkbox directly
+      await remoteCheckbox.check({ force: true });
+      console.log("[randstad] Remote jobs filter applied.");
+    } catch {
+      // Fallback: click the label
+      const label = page.locator("label:has(input#is-remote)").first();
+      await label.click().catch(() => undefined);
+      console.log("[randstad] Remote jobs filter applied via label.");
+    }
+
+    // Wait for the page to update after applying the filter
+    await page.waitForLoadState("networkidle").catch(() => undefined);
+  } else {
+    console.log("[randstad] Remote jobs filter already applied.");
+  }
 }
 
 async function applyContractFilter(page: Page): Promise<void> {
@@ -1038,17 +939,12 @@ async function applyContractFilter(page: Page): Promise<void> {
 
   if (!trigger) {
     const waited = await page
-      .waitForSelector(
-        'button[data-rs-popover-trigger="jobType"], button:has-text("job types")',
-        {
-          timeout: 8000,
-        }
-      )
+      .waitForSelector('button[data-rs-popover-trigger="jobType"], button:has-text("job types")', {
+        timeout: 8000,
+      })
       .catch(() => null);
     if (!waited) {
-      console.warn(
-        "[randstad] Job type trigger not found; skipping contract filter."
-      );
+      console.warn("[randstad] Job type trigger not found; skipping contract filter.");
       return;
     }
   }
@@ -1057,9 +953,7 @@ async function applyContractFilter(page: Page): Promise<void> {
   await trigger?.click({ delay: 30 }).catch(() => undefined);
 
   const popover = page.locator('[data-rs-popover="jobType"]').first();
-  await popover
-    .waitFor({ state: "visible", timeout: 5000 })
-    .catch(() => undefined);
+  await popover.waitFor({ state: "visible", timeout: 5000 }).catch(() => undefined);
 
   const contractCheckbox = popover
     .locator('label:has-text("contract") input[type="checkbox"]')
@@ -1073,9 +967,7 @@ async function applyContractFilter(page: Page): Promise<void> {
       });
     }
   } else {
-    console.warn(
-      "[randstad] Contract checkbox not found in job types popover."
-    );
+    console.warn("[randstad] Contract checkbox not found in job types popover.");
   }
 
   const applyButton = popover
@@ -1091,7 +983,7 @@ async function applyContractFilter(page: Page): Promise<void> {
 
 async function ensureDateSort(
   page: Page,
-  selectors: SiteConfig["search"]["selectors"]
+  selectors: SiteConfig["search"]["selectors"],
 ): Promise<void> {
   const { sortToggle, sortOption, sortOptionText } = selectors;
   const target = sortOptionText || "date";
@@ -1102,24 +994,16 @@ async function ensureDateSort(
     .catch(() => null);
   if (selectWait) {
     const select = page.locator('select#sortBy, select[name="sortBy"]').first();
-    const currentValue = (
-      await select.inputValue().catch(() => "")
-    ).toLowerCase();
-    console.log(
-      `[randstad] Found sort select#sortBy (value="${currentValue || "empty"}")`
-    );
+    const currentValue = (await select.inputValue().catch(() => "")).toLowerCase();
+    console.log(`[randstad] Found sort select#sortBy (value="${currentValue || "empty"}")`);
     if (currentValue !== target) {
-      const changed = await select
-        .selectOption({ value: target })
-        .catch(async () => {
-          const res = await select
-            .selectOption({ label: target })
-            .catch(() => undefined);
-          return res;
-        });
+      const changed = await select.selectOption({ value: target }).catch(async () => {
+        const res = await select.selectOption({ label: target }).catch(() => undefined);
+        return res;
+      });
       if (!changed || (Array.isArray(changed) && !changed.length)) {
         console.warn(
-          "[randstad] Failed to change sort via selectOption; will try fallback toggle path."
+          "[randstad] Failed to change sort via selectOption; will try fallback toggle path.",
         );
       } else {
         await page.waitForLoadState("networkidle").catch(() => undefined);
@@ -1130,23 +1014,19 @@ async function ensureDateSort(
     }
   } else {
     console.warn(
-      "[randstad] sort select#sortBy not found within timeout; falling back to toggle options."
+      "[randstad] sort select#sortBy not found within timeout; falling back to toggle options.",
     );
   }
 
   // If already on date, bail.
   const current = await pickFirstAvailable(
     page,
-    [
-      selectors.sortValueLabel ?? "",
-      "text=/sort\\s*:?.*date/i",
-      'button:has-text("date")',
-    ].filter(Boolean)
+    [selectors.sortValueLabel ?? "", "text=/sort\\s*:?.*date/i", 'button:has-text("date")'].filter(
+      Boolean,
+    ),
   );
   if (current) {
-    const text = (await current.innerText().catch(() => ""))
-      .trim()
-      .toLowerCase();
+    const text = (await current.innerText().catch(() => "")).trim().toLowerCase();
     if (text.includes("date")) {
       return;
     }
@@ -1159,12 +1039,10 @@ async function ensureDateSort(
       'button:has-text("sort")',
       'button:has-text("sort:")',
       'button[aria-label*="sort" i]',
-    ].filter(Boolean)
+    ].filter(Boolean),
   );
   if (!toggle) {
-    const sortLabel = await pickFirstAvailable(page, [
-      "text=/sort\\s*:?.*date/i",
-    ]);
+    const sortLabel = await pickFirstAvailable(page, ["text=/sort\\s*:?.*date/i"]);
     if (sortLabel) {
       return;
     }
@@ -1183,13 +1061,11 @@ async function ensureDateSort(
       '[role="option"]:has-text("date")',
       '[role="menuitem"]:has-text("date")',
       '.filters__sort li:has-text("date")',
-    ].filter(Boolean)
+    ].filter(Boolean),
   );
 
   if (!option) {
-    console.warn(
-      '[randstad] Sort option "date" not found after opening toggle.'
-    );
+    console.warn('[randstad] Sort option "date" not found after opening toggle.');
     return;
   }
 
@@ -1199,7 +1075,7 @@ async function ensureDateSort(
 
 async function pickFirstAvailable(
   page: Page,
-  selectors: (string | undefined)[]
+  selectors: (string | undefined)[],
 ): Promise<Locator | null> {
   for (const selector of selectors) {
     if (!selector) continue;
@@ -1213,9 +1089,7 @@ async function pickFirstAvailable(
 
 function normalizeKeywords(raw: string | string[]): string[] {
   const candidates = Array.isArray(raw) ? raw : [raw];
-  return Array.from(
-    new Set(candidates.map((keyword) => keyword.trim()).filter(Boolean))
-  );
+  return Array.from(new Set(candidates.map((keyword) => keyword.trim()).filter(Boolean)));
 }
 
 function createSessionId(): string {

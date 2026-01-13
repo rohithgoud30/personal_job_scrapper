@@ -328,6 +328,37 @@ async function prepareSearchPage(page: Page, site: SiteConfig, keyword: string):
         }
       }
 
+      // Workplace Type: Remote
+      if (selectors.workplaceTypeRemote) {
+        await page.waitForTimeout(1000);
+        const remoteLabel = page.locator("label").filter({ hasText: "Remote" }).first();
+
+        if (await remoteLabel.isVisible()) {
+          const labelText = await remoteLabel.innerText();
+          if (labelText.includes("(0)")) {
+            console.log(`[dice][${keyword}] "Remote" filter shows 0 results: "${labelText}".`);
+            return false;
+          }
+
+          try {
+            await remoteLabel.scrollIntoViewIfNeeded();
+            await remoteLabel.click({ force: true });
+            console.log(`[dice][${keyword}] Clicked 'Remote' filter.`);
+          } catch (e) {
+            console.warn(`[dice][${keyword}] Failed to click 'Remote' label.`, e);
+            // Fallback to checkbox click
+            const remoteCheckbox = page.locator(selectors.workplaceTypeRemote).first();
+            if (await remoteCheckbox.count()) {
+              await remoteCheckbox
+                .click({ force: true })
+                .catch((err) => console.warn("Fallback Remote checkbox click failed", err));
+            }
+          }
+        } else {
+          console.warn(`[dice][${keyword}] 'Remote' filter label not visible.`);
+        }
+      }
+
       // Employment Type: Contract
       if (selectors.employmentTypeCheckbox) {
         await page.waitForTimeout(1000);
@@ -380,7 +411,11 @@ async function prepareSearchPage(page: Page, site: SiteConfig, keyword: string):
             (url) => {
               const s = url.toString();
               // Check for presence of filters, allow CONTRACTS (plural)
-              return s.includes("filters.postedDate=ONE") && s.includes("filters.employmentType");
+              return (
+                s.includes("filters.postedDate=ONE") &&
+                s.includes("filters.employmentType") &&
+                s.includes("filters.workplaceTypes=Remote")
+              );
             },
             { timeout: 30000 },
           );
@@ -414,8 +449,8 @@ async function collectListingRows(
   page: Page,
   site: SiteConfig,
   keyword: string,
-  runDate: Date,
-  isBackfill: boolean,
+  _runDate: Date,
+  _isBackfill: boolean,
 ): Promise<JobRow[]> {
   const selectors = site.search.selectors;
   if (!selectors.card) {
@@ -883,7 +918,7 @@ export async function extractDescription(page: Page, site: SiteConfig): Promise<
       if (text.trim()) {
         return text.trim();
       }
-    } catch (_) {
+    } catch {
       // ignore
     }
   }
@@ -897,6 +932,7 @@ async function filterTitlesWithAi(rows: SessionRole[]): Promise<TitleFilterResul
     location: row.location,
     url: row.url,
     job_id: row.job_id ?? row.url,
+    isRemote: row.location?.toLowerCase().includes("remote") ?? false,
   }));
   return findIrrelevantJobIds(entries);
 }

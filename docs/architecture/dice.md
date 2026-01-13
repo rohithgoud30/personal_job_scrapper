@@ -26,6 +26,7 @@ The scraper is launched via `npm start -- --site=dice`.
 3.  **Apply Filters**:
     - Opens the "All filters" drawer.
     - Selects **"Today"** (Posted Date) to ensure only fresh jobs are scraped.
+    - Selects **"Remote"** (Workplace Type) to filter for remote-only positions.
     - Selects **"Contract"** (Employment Type).
     - Clicks "Apply filters".
     - **Robustness**: Includes logic to scroll the drawer and fallback to clicking labels if checkboxes are intercepted.

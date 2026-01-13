@@ -9,6 +9,7 @@ export interface TitleEntry {
   location: string;
   url: string;
   job_id: string;
+  isRemote?: boolean;
 }
 
 export interface DetailPayload {
@@ -48,7 +49,7 @@ function getVertexClient(): VertexAI {
     const project = process.env.GOOGLE_CLOUD_PROJECT;
     if (!project) {
       throw new Error(
-        "GOOGLE_CLOUD_PROJECT environment variable is required but not set. Please add it to your .env file."
+        "GOOGLE_CLOUD_PROJECT environment variable is required but not set. Please add it to your .env file.",
       );
     }
 
@@ -62,10 +63,7 @@ function getVertexClient(): VertexAI {
   return vertexAiClient;
 }
 
-function getVertexModel(
-  modelName: string,
-  systemInstruction?: string
-): GenerativeModel {
+function getVertexModel(modelName: string, systemInstruction?: string): GenerativeModel {
   const client = getVertexClient();
   return client.getGenerativeModel({
     model: modelName,
@@ -79,9 +77,7 @@ function getVertexModel(
   });
 }
 
-export async function findIrrelevantJobIds(
-  entries: TitleEntry[]
-): Promise<TitleFilterResult> {
+export async function findIrrelevantJobIds(entries: TitleEntry[]): Promise<TitleFilterResult> {
   if (!entries.length) {
     return { removalSet: new Set(), reasons: new Map() };
   }
@@ -95,7 +91,7 @@ export async function findIrrelevantJobIds(
 
   if (!prompts || prompts.length === 0) {
     throw new Error(
-      "Title filter prompts not found in config.json. Please add 'ai.prompts.titleFilter' to your config file."
+      "Title filter prompts not found in config.json. Please add 'ai.prompts.titleFilter' to your config file.",
     );
   }
 
@@ -103,7 +99,7 @@ export async function findIrrelevantJobIds(
 
   const systemPrompt = Array.isArray(prompts) ? prompts.join(" ") : prompts;
 
-  const client = getOpenAiClient();
+  const _client = getOpenAiClient();
 
   for (let i = 0; i < entries.length; i += BATCH_SIZE) {
     const batch = entries.slice(i, i + BATCH_SIZE);
@@ -114,7 +110,7 @@ export async function findIrrelevantJobIds(
     console.log(
       `[AI] Processing title batch ${
         Math.floor(i / BATCH_SIZE) + 1
-      }/${Math.ceil(entries.length / BATCH_SIZE)} (${batch.length} items)...`
+      }/${Math.ceil(entries.length / BATCH_SIZE)} (${batch.length} items)...`,
     );
 
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -139,8 +135,7 @@ export async function findIrrelevantJobIds(
           const result = await vertexModel.generateContent({
             contents: [{ role: "user", parts: [{ text: userContent }] }],
           });
-          const responseText =
-            result.response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+          const responseText = result.response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
           const parsed: AiIrrelevantResponse = JSON.parse(responseText);
           processTitleResponse(parsed, combinedRemovalSet, combinedReasons);
         } else {
@@ -172,10 +167,7 @@ export async function findIrrelevantJobIds(
     }
 
     if (!batchSuccess) {
-      console.error(
-        `[AI] Failed to process title batch starting at index ${i}`,
-        lastError
-      );
+      console.error(`[AI] Failed to process title batch starting at index ${i}`, lastError);
       throw lastError ?? new Error("Title AI filter failed after retries.");
     }
   }
@@ -185,16 +177,14 @@ export async function findIrrelevantJobIds(
 
 export async function evaluateJobDetail(
   payload: DetailPayload,
-  siteConfig?: SiteConfig
+  siteConfig?: SiteConfig,
 ): Promise<{ accepted: boolean; reasoning: string }> {
   const config = await loadConfig();
-  const prompts =
-    siteConfig?.ai?.prompts?.detailEvaluation ||
-    config.ai?.prompts?.detailEvaluation;
+  const prompts = siteConfig?.ai?.prompts?.detailEvaluation || config.ai?.prompts?.detailEvaluation;
 
   if (!prompts || prompts.length === 0) {
     throw new Error(
-      "Detail evaluation prompts not found in config.json. Please add 'ai.prompts.detailEvaluation' to your config file."
+      "Detail evaluation prompts not found in config.json. Please add 'ai.prompts.detailEvaluation' to your config file.",
     );
   }
 
@@ -216,9 +206,7 @@ export async function evaluateJobDetail(
       const fallbackModel = requireEnv("fallbackAiDetailEvalModel");
 
       if (useFallback) {
-        console.log(
-          `[AI] Attempt ${attempt}: Using fallback model ${fallbackModel}...`
-        );
+        console.log(`[AI] Attempt ${attempt}: Using fallback model ${fallbackModel}...`);
         const client = getOpenAiClient();
         const completion = await client.chat.completions.create({
           model: fallbackModel,
@@ -234,26 +222,21 @@ export async function evaluateJobDetail(
         const parsed = JSON.parse(message);
         return {
           accepted: Boolean(parsed.accepted),
-          reasoning:
-            typeof parsed.reasoning === "string" ? parsed.reasoning : "",
+          reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : "",
         };
       } else {
         // Use Primary Vertex Model
-        console.log(
-          `[AI] Attempt ${attempt}: Using primary model ${modelName}...`
-        );
+        console.log(`[AI] Attempt ${attempt}: Using primary model ${modelName}...`);
         const model = getVertexModel(modelName, systemPrompt);
         const result = await model.generateContent({
           contents: [{ role: "user", parts: [{ text: userContent }] }],
         });
 
-        const responseText =
-          result.response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+        const responseText = result.response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
         const parsed = JSON.parse(responseText);
         return {
           accepted: Boolean(parsed.accepted),
-          reasoning:
-            typeof parsed.reasoning === "string" ? parsed.reasoning : "",
+          reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : "",
         };
       }
     } catch (error) {
@@ -271,7 +254,7 @@ export async function evaluateJobDetail(
 function processTitleResponse(
   parsed: AiIrrelevantResponse,
   combinedRemovalSet: Set<string>,
-  combinedReasons: Map<string, string>
+  combinedReasons: Map<string, string>,
 ) {
   if (Array.isArray(parsed.remove)) {
     for (const entry of parsed.remove) {

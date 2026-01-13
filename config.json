@@ -346,6 +346,7 @@
           "allFilters": "button:has-text('All filters')",
           "postedDateRadio": "input[type='radio'][value='ONE']",
           "employmentTypeCheckbox": "input[type='checkbox'][value='CONTRACT']",
+          "workplaceTypeRemote": "input[type='checkbox'][value='Remote']",
           "jobType": "div[class*='job-overview_detailContainer']",
           "postedDateDetail": "div[data-cy='job-details-header-details']",
           "applyFilters": "button:has-text('Apply filters')"
