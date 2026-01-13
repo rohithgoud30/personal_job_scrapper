@@ -12,11 +12,7 @@ import {
   OutputPaths,
   SessionPaths,
 } from "../../lib/paths";
-import {
-  findSessionById,
-  parseDateFolderLabel,
-  readSessionCsv,
-} from "../../lib/session";
+import { findSessionById, parseDateFolderLabel, readSessionCsv } from "../../lib/session";
 import { getEasternDateLabel, getEasternTimeLabel } from "../../lib/time";
 import { env, getRunDateOverride } from "../../lib/env";
 import { sleep } from "../../lib/throttle";
@@ -37,7 +33,7 @@ interface SessionRole extends JobRow {
 export async function runNvoidsSite(
   site: SiteConfig,
   output: OutputConfig,
-  options: RunOptions = {}
+  options: RunOptions = {},
 ): Promise<void> {
   const resumeSessionId = options.resumeSessionId?.trim();
   const skipBatchDelay = Boolean(options.skipBatchPause);
@@ -59,10 +55,7 @@ export async function runNvoidsSite(
     const located = await findSessionById(output, site, resumeSessionId);
     if (!located) {
       console.warn(
-        `[nvoids] Session ${resumeSessionId} not found under ${path.join(
-          output.root,
-          site.host
-        )}.`
+        `[nvoids] Session ${resumeSessionId} not found under ${path.join(output.root, site.host)}.`,
       );
       return;
     }
@@ -89,14 +82,12 @@ export async function runNvoidsSite(
     }
 
     console.log(
-      `[nvoids] Resuming AI-only run for session ${resumeSessionId} (date folder ${outputPaths.dateFolder}).`
+      `[nvoids] Resuming AI-only run for session ${resumeSessionId} (date folder ${outputPaths.dateFolder}).`,
     );
   } else {
     const dateLabel = getEasternDateLabel(runDate);
     if (isBackfill) {
-      console.log(
-        `[nvoids] Backfill mode enabled. Using run date ${dateLabel}.`
-      );
+      console.log(`[nvoids] Backfill mode enabled. Using run date ${dateLabel}.`);
     } else {
       console.log(`[nvoids] Live run using current date ${dateLabel}.`);
     }
@@ -125,7 +116,7 @@ export async function runNvoidsSite(
         sessionPaths.sessionId,
         runDate,
         isBackfill,
-        skipBatchDelay
+        skipBatchDelay,
       );
 
       if (!staged.size) {
@@ -135,15 +126,11 @@ export async function runNvoidsSite(
 
       stagedArray = Array.from(staged.values());
     } else if (!stagedArray.length) {
-      console.log(
-        `[nvoids] Session ${resumeSessionId} has no staged roles to evaluate.`
-      );
+      console.log(`[nvoids] Session ${resumeSessionId} has no staged roles to evaluate.`);
       return;
     }
 
-    console.log(
-      `[nvoids][AI] Running title filter on ${stagedArray.length} staged roles...`
-    );
+    console.log(`[nvoids][AI] Running title filter on ${stagedArray.length} staged roles...`);
     await writeSessionRoles(sessionPaths, stagedArray);
 
     const { removalSet, reasons } = await filterTitlesWithAi(stagedArray);
@@ -155,7 +142,7 @@ export async function runNvoidsSite(
         if (!removalSet.has(key)) continue;
         const reason = reasons.get(key) ?? "Marked irrelevant.";
         console.log(
-          `[nvoids][AI][Title Reject #${rejectIndex}] "${row.title}" (${row.location}) – ${reason}`
+          `[nvoids][AI][Title Reject #${rejectIndex}] "${row.title}" (${row.location}) – ${reason}`,
         );
         rejectedLogger.log({
           title: row.title,
@@ -173,9 +160,7 @@ export async function runNvoidsSite(
       }
     }
 
-    const filtered = stagedArray.filter(
-      (row) => !removalSet.has(row.job_id ?? row.url)
-    );
+    const filtered = stagedArray.filter((row) => !removalSet.has(row.job_id ?? row.url));
     if (!filtered.length) {
       console.log("[nvoids] AI filtered out all titles for this session.");
       await writeSessionRoles(sessionPaths, filtered);
@@ -187,15 +172,10 @@ export async function runNvoidsSite(
     console.log(
       `[nvoids][AI] Title filter removed ${
         stagedArray.length - filtered.length
-      } roles. ${filtered.length} remain for detail evaluation.`
+      } roles. ${filtered.length} remain for detail evaluation.`,
     );
 
-    const acceptedRows = await evaluateDetailedJobs(
-      context,
-      filtered,
-      seen,
-      site
-    );
+    const acceptedRows = await evaluateDetailedJobs(context, filtered, seen, site);
     if (!acceptedRows.length) {
       console.log("[nvoids] No jobs approved after detail evaluation.");
       await saveSeenStore(outputPaths.seenFile, seen);
@@ -204,9 +184,7 @@ export async function runNvoidsSite(
 
     await appendJobRows(outputPaths.csvFile, acceptedRows);
     await saveSeenStore(outputPaths.seenFile, seen);
-    console.log(
-      `[nvoids] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`
-    );
+    console.log(`[nvoids] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`);
   } finally {
     await context.close();
   }
@@ -221,13 +199,11 @@ async function scrapeKeywordsInBatches(
   sessionId: string,
   runDate: Date,
   isBackfill: boolean,
-  skipBatchDelay: boolean
+  skipBatchDelay: boolean,
 ): Promise<void> {
   const batchSize = env.keywordBatchSize;
   if (skipBatchDelay) {
-    console.log(
-      "[nvoids] Batch wait disabled; running keyword batches back-to-back."
-    );
+    console.log("[nvoids] Batch wait disabled; running keyword batches back-to-back.");
   }
 
   for (let i = 0; i < keywords.length; i += batchSize) {
@@ -242,9 +218,9 @@ async function scrapeKeywordsInBatches(
           staged,
           sessionId,
           runDate,
-          isBackfill
-        )
-      )
+          isBackfill,
+        ),
+      ),
     );
 
     const hasMoreBatches = i + batchSize < keywords.length;
@@ -266,7 +242,7 @@ async function scrapeKeywordInNewPage(
   staged: Map<string, SessionRole>,
   sessionId: string,
   runDate: Date,
-  isBackfill: boolean
+  isBackfill: boolean,
 ): Promise<void> {
   const page = await context.newPage();
   await blockAds(page);
@@ -287,9 +263,7 @@ async function scrapeKeywordInNewPage(
       });
       added += 1;
     }
-    console.log(
-      `[nvoids] Keyword "${keyword}": scraped ${rows.length}, staged ${added}`
-    );
+    console.log(`[nvoids] Keyword "${keyword}": scraped ${rows.length}, staged ${added}`);
   } catch (error) {
     console.error(`[nvoids] Failed keyword "${keyword}"`, error);
   } finally {
@@ -297,11 +271,7 @@ async function scrapeKeywordInNewPage(
   }
 }
 
-async function prepareSearchPage(
-  page: Page,
-  site: SiteConfig,
-  keyword: string
-): Promise<void> {
+async function prepareSearchPage(page: Page, site: SiteConfig, keyword: string): Promise<void> {
   await page.goto(site.search.url, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1000);
 }
@@ -311,15 +281,13 @@ async function scrapeKeyword(
   site: SiteConfig,
   keyword: string,
   runDate: Date,
-  isBackfill: boolean
+  isBackfill: boolean,
 ): Promise<JobRow[]> {
   const searchInput = page.locator(site.search.selectors.keywords);
   const submitButton = page.locator(site.search.selectors.submit);
 
   if ((await searchInput.count()) === 0) {
-    console.warn(
-      `[nvoids][${keyword}] Search input not found. Skipping keyword.`
-    );
+    console.warn(`[nvoids][${keyword}] Search input not found. Skipping keyword.`);
     return [];
   }
 
@@ -335,23 +303,19 @@ async function collectListingRows(
   site: SiteConfig,
   keyword: string,
   runDate: Date,
-  isBackfill: boolean
+  isBackfill: boolean,
 ): Promise<JobRow[]> {
   const rows: JobRow[] = [];
   let pageIndex = 1;
 
   while (true) {
-    await page
-      .waitForSelector("table tbody tr", { timeout: 10000 })
-      .catch(() => {});
+    await page.waitForSelector("table tbody tr", { timeout: 10000 }).catch(() => {});
 
     const rowElements = page.locator("table tbody tr");
     const count = await rowElements.count();
 
     if (count === 0) {
-      console.log(
-        `[nvoids][${keyword}] No results found on page ${pageIndex}. Stopping.`
-      );
+      console.log(`[nvoids][${keyword}] No results found on page ${pageIndex}. Stopping.`);
       break;
     }
 
@@ -373,21 +337,18 @@ async function collectListingRows(
 
     if (!isBackfill && site.search.postedTodayOnly && !pageHasToday) {
       console.log(
-        `[nvoids][${keyword}] No results dated today on page ${pageIndex}. Stopping pagination.`
+        `[nvoids][${keyword}] No results dated today on page ${pageIndex}. Stopping pagination.`,
       );
       break;
     }
 
     if (pageIndex >= site.run.maxPages) {
-      console.log(
-        `[nvoids][${keyword}] Reached max pages (${site.run.maxPages}). Stopping.`
-      );
+      console.log(`[nvoids][${keyword}] Reached max pages (${site.run.maxPages}). Stopping.`);
       break;
     }
 
     // Check for Next button
-    const nextSelector =
-      site.search.selectors.next ?? "a:has-text('Next'):not(table *)";
+    const nextSelector = site.search.selectors.next ?? "a:has-text('Next'):not(table *)";
 
     // Use count() to check for existence safely without strict mode violation
     const nextBtns = page.locator(nextSelector);
@@ -400,14 +361,12 @@ async function collectListingRows(
         pageIndex++;
       } else {
         console.log(
-          `[nvoids][${keyword}] Next button present but not visible. Stopping pagination.`
+          `[nvoids][${keyword}] Next button present but not visible. Stopping pagination.`,
         );
         break;
       }
     } else {
-      console.log(
-        `[nvoids][${keyword}] No more pages available. Stopping pagination.`
-      );
+      console.log(`[nvoids][${keyword}] No more pages available. Stopping pagination.`);
       break;
     }
   }
@@ -415,10 +374,7 @@ async function collectListingRows(
   return rows;
 }
 
-async function extractJobRow(
-  row: Locator,
-  site: SiteConfig
-): Promise<JobRow | null> {
+async function extractJobRow(row: Locator, site: SiteConfig): Promise<JobRow | null> {
   try {
     const titleLink = row.locator("td:nth-child(1) a").first();
     if ((await titleLink.count()) === 0) return null;
@@ -432,11 +388,7 @@ async function extractJobRow(
     }
 
     // Validate URL to ensure it's not an ad redirect
-    if (
-      url.includes("googleads") ||
-      url.includes("doubleclick") ||
-      url.includes("adservice")
-    ) {
+    if (url.includes("googleads") || url.includes("doubleclick") || url.includes("adservice")) {
       return null;
     }
 
@@ -509,28 +461,67 @@ function isPersonalEmail(email: string): boolean {
 }
 
 /**
+ * Check if location/text indicates Pennsylvania (PA)
+ * This is used to exempt jobs in PA from the personal email filter
+ */
+function isPALocation(text: string): boolean {
+  const upperText = text.toUpperCase();
+  // Check for common PA patterns:
+  // "PA," or "PA " or ", PA" or "Pennsylvania" or ending with " PA"
+  // Also check for explicit city patterns like "Philadelphia, PA", "Pittsburgh, PA"
+  return (
+    upperText.includes(", PA") ||
+    upperText.includes(" PA,") ||
+    upperText.includes(" PA ") ||
+    upperText.endsWith(" PA") ||
+    upperText.includes("PENNSYLVANIA") ||
+    // Common PA cities
+    /\b(PHILADELPHIA|PITTSBURGH|ALLENTOWN|READING|ERIE|SCRANTON|BETHLEHEM|LANCASTER|HARRISBURG)\b/.test(
+      upperText,
+    )
+  );
+}
+
+/**
  * Check if job description has only personal emails (no company emails)
  * Returns true if there are emails but ALL of them are personal
  * Returns false if there are no emails OR at least one company email exists
+ *
+ * @param description - The job description text
+ * @param location - Optional location to check for PA exception
+ * @param title - Optional title to check for PA exception
  */
-function hasOnlyPersonalEmails(description: string): {
+function hasOnlyPersonalEmails(
+  description: string,
+  location?: string,
+  title?: string,
+): {
   hasEmails: boolean;
   onlyPersonal: boolean;
   emails: string[];
+  isPAExempt: boolean;
 } {
   const emails = extractEmails(description);
   if (emails.length === 0) {
-    return { hasEmails: false, onlyPersonal: false, emails: [] };
+    return { hasEmails: false, onlyPersonal: false, emails: [], isPAExempt: false };
   }
+
   const allPersonal = emails.every(isPersonalEmail);
-  return { hasEmails: true, onlyPersonal: allPersonal, emails };
+
+  // Check if job is in PA - if so, exempt from personal email filter
+  const isPAExempt =
+    isPALocation(description) ||
+    (location ? isPALocation(location) : false) ||
+    (title ? isPALocation(title) : false);
+
+  return { hasEmails: true, onlyPersonal: allPersonal, emails, isPAExempt };
 }
 
 async function evaluateDetailedJobs(
   context: BrowserContext,
   roles: SessionRole[],
   seen: Set<string>,
-  site: SiteConfig
+  site: SiteConfig,
 ): Promise<JobRow[]> {
   const accepted: JobRow[] = [];
   for (let i = 0; i < roles.length; i++) {
@@ -545,23 +536,22 @@ async function evaluateDetailedJobs(
       let description = await extractDescription(page);
 
       // Check for personal emails only (skip AI evaluation to save costs)
-      const emailCheck = hasOnlyPersonalEmails(description);
-      if (emailCheck.hasEmails && emailCheck.onlyPersonal) {
+      // Exception: PA (Pennsylvania) jobs are allowed even with personal emails
+      const emailCheck = hasOnlyPersonalEmails(description, role.location, role.title);
+      if (emailCheck.hasEmails && emailCheck.onlyPersonal && !emailCheck.isPAExempt) {
         console.log(
           `[nvoids] Rejected "${
             role.title
           }" – Reason: Only personal emails found (${emailCheck.emails.join(
-            ", "
-          )}). No company email.`
+            ", ",
+          )}). No company email. (Not PA location)`,
         );
         rejectedLogger.log({
           title: role.title,
           site: site.key,
           url: role.url,
           jd: description,
-          reason: `Only personal emails found: ${emailCheck.emails.join(
-            ", "
-          )}. No company email.`,
+          reason: `Only personal emails found: ${emailCheck.emails.join(", ")}. No company email. (Not PA location)`,
           scraped_at: role.scraped_at,
           type: "detail",
         });
@@ -571,10 +561,19 @@ async function evaluateDetailedJobs(
         continue;
       }
 
+      // Log if PA exemption was applied
+      if (emailCheck.hasEmails && emailCheck.onlyPersonal && emailCheck.isPAExempt) {
+        console.log(
+          `[nvoids] PA exemption applied for "${role.title}" – Personal emails found (${emailCheck.emails.join(
+            ", ",
+          )}) but job is in PA location.`,
+        );
+      }
+
       console.log(
         `[nvoids][AI] Detail candidate #${i + 1}/${roles.length} "${
           role.title
-        }" – description length ${description.length} chars.`
+        }" – description length ${description.length} chars.`,
       );
 
       const detailResult = await evaluateJobDetail(
@@ -585,14 +584,14 @@ async function evaluateDetailedJobs(
           url: role.url,
           description,
         },
-        site
+        site,
       );
 
       if (!detailResult.accepted) {
         console.log(
           `[nvoids][AI] Rejected "${role.title}" – Reason: ${
             detailResult.reasoning || "Model marked as not relevant."
-          }`
+          }`,
         );
         rejectedLogger.log({
           title: role.title,
@@ -617,30 +616,21 @@ async function evaluateDetailedJobs(
       seen.add(jobKey);
       accepted.push(role);
     } catch (error) {
-      console.error(
-        `[nvoids] Failed to evaluate detail for ${role.url}`,
-        error
-      );
+      console.error(`[nvoids] Failed to evaluate detail for ${role.url}`, error);
     } finally {
       await page.close();
     }
   }
 
   console.log(
-    `[nvoids][AI] Detail evaluation accepted ${accepted.length} roles out of ${roles.length}.`
+    `[nvoids][AI] Detail evaluation accepted ${accepted.length} roles out of ${roles.length}.`,
   );
   return accepted;
 }
 
 export async function extractDescription(page: Page): Promise<string> {
   // Generic selectors for job description
-  const selectors = [
-    ".entry-content",
-    ".job-content",
-    "article",
-    "main",
-    "body",
-  ];
+  const selectors = [".entry-content", ".job-content", "article", "main", "body"];
   for (const selector of selectors) {
     const locator = page.locator(selector).first();
     if (await locator.count()) {
@@ -657,9 +647,7 @@ export async function extractDescription(page: Page): Promise<string> {
   return await page.content();
 }
 
-async function filterTitlesWithAi(
-  rows: SessionRole[]
-): Promise<TitleFilterResult> {
+async function filterTitlesWithAi(rows: SessionRole[]): Promise<TitleFilterResult> {
   const entries: TitleEntry[] = rows.map((row) => ({
     title: row.title,
     company: row.company,
@@ -670,10 +658,7 @@ async function filterTitlesWithAi(
   return findIrrelevantJobIds(entries);
 }
 
-async function writeSessionRoles(
-  sessionPaths: SessionPaths,
-  rows: SessionRole[]
-): Promise<void> {
+async function writeSessionRoles(sessionPaths: SessionPaths, rows: SessionRole[]): Promise<void> {
   const headers = [
     "session_id",
     "keyword",
@@ -698,7 +683,7 @@ async function writeSessionRoles(
       row.url,
       row.job_id ?? "",
       row.scraped_at,
-    ].join(",")
+    ].join(","),
   );
 
   const payload = [headers.join(","), ...lines].join("\n") + "\n";
@@ -714,9 +699,7 @@ function escapeCsv(value: string): string {
 
 function normalizeKeywords(raw: string | string[]): string[] {
   const candidates = Array.isArray(raw) ? raw : [raw];
-  return Array.from(
-    new Set(candidates.map((keyword) => keyword.trim()).filter(Boolean))
-  );
+  return Array.from(new Set(candidates.map((keyword) => keyword.trim()).filter(Boolean)));
 }
 
 function isPostedToday(posted: string, referenceDate: Date): boolean {
@@ -734,36 +717,22 @@ function isPostedToday(posted: string, referenceDate: Date): boolean {
 
     // Get Reference Date (Now) parts in Zone
     const refParts = formatter.formatToParts(referenceDate);
-    const refYear = parseInt(
-      refParts.find((p) => p.type === "year")?.value || "0"
-    );
-    const refMonth = parseInt(
-      refParts.find((p) => p.type === "month")?.value || "0"
-    );
-    const refDay = parseInt(
-      refParts.find((p) => p.type === "day")?.value || "0"
-    );
+    const refYear = parseInt(refParts.find((p) => p.type === "year")?.value || "0");
+    const refMonth = parseInt(refParts.find((p) => p.type === "month")?.value || "0");
+    const refDay = parseInt(refParts.find((p) => p.type === "day")?.value || "0");
 
     // Get Job Date parts in Zone
     const jobParts = formatter.formatToParts(jobDate);
-    const jobYear = parseInt(
-      jobParts.find((p) => p.type === "year")?.value || "0"
-    );
-    const jobMonth = parseInt(
-      jobParts.find((p) => p.type === "month")?.value || "0"
-    );
-    const jobDay = parseInt(
-      jobParts.find((p) => p.type === "day")?.value || "0"
-    );
+    const jobYear = parseInt(jobParts.find((p) => p.type === "year")?.value || "0");
+    const jobMonth = parseInt(jobParts.find((p) => p.type === "month")?.value || "0");
+    const jobDay = parseInt(jobParts.find((p) => p.type === "day")?.value || "0");
 
     return refYear === jobYear && refMonth === jobMonth && refDay === jobDay;
   };
 
   // Parse the job's posted date string
   // Format: "HH:MM AM/PM DD-Mon-YY" -> e.g. "11:54 PM 01-Dec-25"
-  const dateMatch = posted.match(
-    /(\d{2}):(\d{2})\s+(AM|PM)\s+(\d{2})-([A-Za-z]{3})-(\d{2})/
-  );
+  const dateMatch = posted.match(/(\d{2}):(\d{2})\s+(AM|PM)\s+(\d{2})-([A-Za-z]{3})-(\d{2})/);
 
   if (dateMatch) {
     const [_, hourStr, minStr, ampm, dayStr, monthStr, yearStr] = dateMatch;
