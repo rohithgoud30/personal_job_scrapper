@@ -12,11 +12,7 @@ import {
   OutputPaths,
   SessionPaths,
 } from "../../lib/paths";
-import {
-  findSessionById,
-  parseDateFolderLabel,
-  readSessionCsv,
-} from "../../lib/session";
+import { findSessionById, parseDateFolderLabel, readSessionCsv } from "../../lib/session";
 import { getEasternDateLabel, getEasternTimeLabel } from "../../lib/time";
 import { env, getRunDateOverride } from "../../lib/env";
 import { sleep } from "../../lib/throttle";
@@ -37,18 +33,14 @@ interface SessionRole extends JobRow {
 export async function runDiceSite(
   site: SiteConfig,
   output: OutputConfig,
-  options: RunOptions = {}
+  options: RunOptions = {},
 ): Promise<void> {
   const resumeSessionId = options.resumeSessionId?.trim();
   const skipBatchDelay = Boolean(options.skipBatchPause);
   const rawKeywords = options.keywords?.length
     ? options.keywords
     : site.search.criteria.searchKeywords;
-  const keywords = Array.isArray(rawKeywords)
-    ? rawKeywords
-    : rawKeywords
-    ? [rawKeywords]
-    : [];
+  const keywords = Array.isArray(rawKeywords) ? rawKeywords : rawKeywords ? [rawKeywords] : [];
 
   if (!resumeSessionId && !keywords.length) {
     console.warn("[dice] No keywords configured. Skipping run.");
@@ -66,10 +58,7 @@ export async function runDiceSite(
     const located = await findSessionById(output, site, resumeSessionId);
     if (!located) {
       console.warn(
-        `[dice] Session ${resumeSessionId} not found under ${path.join(
-          output.root,
-          site.host
-        )}.`
+        `[dice] Session ${resumeSessionId} not found under ${path.join(output.root, site.host)}.`,
       );
       return;
     }
@@ -96,7 +85,7 @@ export async function runDiceSite(
     }
 
     console.log(
-      `[dice] Resuming AI-only run for session ${resumeSessionId} (date folder ${outputPaths.dateFolder}).`
+      `[dice] Resuming AI-only run for session ${resumeSessionId} (date folder ${outputPaths.dateFolder}).`,
     );
   } else {
     const dateLabel = getEasternDateLabel(runDate);
@@ -130,7 +119,7 @@ export async function runDiceSite(
         sessionPaths.sessionId,
         runDate,
         isBackfill,
-        skipBatchDelay
+        skipBatchDelay,
       );
 
       if (!staged.size) {
@@ -140,15 +129,11 @@ export async function runDiceSite(
 
       stagedArray = Array.from(staged.values());
     } else if (!stagedArray.length) {
-      console.log(
-        `[dice] Session ${resumeSessionId} has no staged roles to evaluate.`
-      );
+      console.log(`[dice] Session ${resumeSessionId} has no staged roles to evaluate.`);
       return;
     }
 
-    console.log(
-      `[dice][AI] Running title filter on ${stagedArray.length} staged roles...`
-    );
+    console.log(`[dice][AI] Running title filter on ${stagedArray.length} staged roles...`);
     await writeSessionRoles(sessionPaths, stagedArray);
 
     const { removalSet, reasons } = await filterTitlesWithAi(stagedArray);
@@ -160,7 +145,7 @@ export async function runDiceSite(
         if (!removalSet.has(key)) continue;
         const reason = reasons.get(key) ?? "Marked irrelevant.";
         console.log(
-          `[dice][AI][Title Reject #${rejectIndex}] "${row.title}" (${row.location}) – ${reason}`
+          `[dice][AI][Title Reject #${rejectIndex}] "${row.title}" (${row.location}) – ${reason}`,
         );
         rejectedLogger.log({
           title: row.title,
@@ -178,9 +163,7 @@ export async function runDiceSite(
       }
     }
 
-    const filtered = stagedArray.filter(
-      (row) => !removalSet.has(row.job_id ?? row.url)
-    );
+    const filtered = stagedArray.filter((row) => !removalSet.has(row.job_id ?? row.url));
     if (!filtered.length) {
       console.log("[dice] AI filtered out all titles for this session.");
       await writeSessionRoles(sessionPaths, filtered);
@@ -192,15 +175,10 @@ export async function runDiceSite(
     console.log(
       `[dice][AI] Title filter removed ${
         stagedArray.length - filtered.length
-      } roles. ${filtered.length} remain for detail evaluation.`
+      } roles. ${filtered.length} remain for detail evaluation.`,
     );
 
-    const acceptedRows = await evaluateDetailedJobs(
-      context,
-      filtered,
-      seen,
-      site
-    );
+    const acceptedRows = await evaluateDetailedJobs(context, filtered, seen, site);
     if (!acceptedRows.length) {
       console.log("[dice] No jobs approved after detail evaluation.");
       await saveSeenStore(outputPaths.seenFile, seen);
@@ -209,9 +187,7 @@ export async function runDiceSite(
 
     await appendJobRows(outputPaths.csvFile, acceptedRows);
     await saveSeenStore(outputPaths.seenFile, seen);
-    console.log(
-      `[dice] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`
-    );
+    console.log(`[dice] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`);
   } finally {
     await context.close();
   }
@@ -226,13 +202,11 @@ async function scrapeKeywordsInBatches(
   sessionId: string,
   runDate: Date,
   isBackfill: boolean,
-  skipBatchDelay: boolean
+  skipBatchDelay: boolean,
 ): Promise<void> {
   const batchSize = env.keywordBatchSize;
   if (skipBatchDelay) {
-    console.log(
-      "[dice] Batch wait disabled; running keyword batches back-to-back."
-    );
+    console.log("[dice] Batch wait disabled; running keyword batches back-to-back.");
   }
 
   for (let i = 0; i < keywords.length; i += batchSize) {
@@ -247,16 +221,14 @@ async function scrapeKeywordsInBatches(
           staged,
           sessionId,
           runDate,
-          isBackfill
-        )
-      )
+          isBackfill,
+        ),
+      ),
     );
 
     const hasMoreBatches = i + batchSize < keywords.length;
     if (!isBackfill && hasMoreBatches && !skipBatchDelay) {
-      console.log(
-        "[dice] Sleeping 30s before next keyword batch (robots crawl-delay)."
-      );
+      console.log("[dice] Sleeping 30s before next keyword batch (robots crawl-delay).");
       await sleep(30);
     }
   }
@@ -270,26 +242,18 @@ async function scrapeKeywordInNewPage(
   staged: Map<string, SessionRole>,
   sessionId: string,
   runDate: Date,
-  isBackfill: boolean
+  isBackfill: boolean,
 ): Promise<void> {
   const page = await context.newPage();
   try {
     console.log(`[dice][${keyword}] Searching for keyword "${keyword}"`);
     const shouldProceed = await prepareSearchPage(page, site, keyword);
     if (!shouldProceed) {
-      console.log(
-        `[dice][${keyword}] Skipping keyword "${keyword}" (0 results for Today).`
-      );
+      console.log(`[dice][${keyword}] Skipping keyword "${keyword}" (0 results for Today).`);
       return;
     }
 
-    const rows = await collectListingRows(
-      page,
-      site,
-      keyword,
-      runDate,
-      isBackfill
-    );
+    const rows = await collectListingRows(page, site, keyword, runDate, isBackfill);
     let added = 0;
     for (const row of rows) {
       const jobKey = computeJobKey(row);
@@ -303,9 +267,7 @@ async function scrapeKeywordInNewPage(
       });
       added += 1;
     }
-    console.log(
-      `[dice] Keyword "${keyword}": scraped ${rows.length}, staged ${added}`
-    );
+    console.log(`[dice] Keyword "${keyword}": scraped ${rows.length}, staged ${added}`);
   } catch (error) {
     console.error(`[dice] Failed keyword "${keyword}"`, error);
   } finally {
@@ -313,11 +275,7 @@ async function scrapeKeywordInNewPage(
   }
 }
 
-async function prepareSearchPage(
-  page: Page,
-  site: SiteConfig,
-  keyword: string
-): Promise<boolean> {
+async function prepareSearchPage(page: Page, site: SiteConfig, keyword: string): Promise<boolean> {
   await page.goto(site.search.url, { waitUntil: "domcontentloaded" });
   await acceptCookieConsent(page, site.cookieConsent);
 
@@ -325,9 +283,7 @@ async function prepareSearchPage(
   const keywordInput = page.locator(selectors.keywords).first();
 
   if ((await keywordInput.count()) === 0) {
-    throw new Error(
-      `Keyword input not found using selector ${selectors.keywords}`
-    );
+    throw new Error(`Keyword input not found using selector ${selectors.keywords}`);
   }
 
   await keywordInput.fill("");
@@ -335,9 +291,7 @@ async function prepareSearchPage(
 
   const submitButton = page.locator(selectors.submit).first();
   if ((await submitButton.count()) === 0) {
-    throw new Error(
-      `Submit button not found using selector ${selectors.submit}`
-    );
+    throw new Error(`Submit button not found using selector ${selectors.submit}`);
   }
 
   await submitButton.click({ delay: 50 });
@@ -353,18 +307,13 @@ async function prepareSearchPage(
       // Posted Date: Today
       if (selectors.postedDateRadio) {
         // Check for "Today (0)" case
-        const todayLabel = page
-          .locator("label")
-          .filter({ hasText: "Today" })
-          .first();
+        const todayLabel = page.locator("label").filter({ hasText: "Today" }).first();
 
         if (await todayLabel.isVisible()) {
           const labelText = await todayLabel.innerText();
           // Check for "Today (0)"
           if (labelText.includes("(0)")) {
-            console.log(
-              `[dice][${keyword}] "Today" filter shows 0 results: "${labelText}".`
-            );
+            console.log(`[dice][${keyword}] "Today" filter shows 0 results: "${labelText}".`);
             return false;
           }
 
@@ -382,17 +331,12 @@ async function prepareSearchPage(
       // Employment Type: Contract
       if (selectors.employmentTypeCheckbox) {
         await page.waitForTimeout(1000);
-        const contractLabel = page
-          .locator("label")
-          .filter({ hasText: "Contract" })
-          .first();
+        const contractLabel = page.locator("label").filter({ hasText: "Contract" }).first();
 
         if (await contractLabel.isVisible()) {
           const labelText = await contractLabel.innerText();
           if (labelText.includes("(0)")) {
-            console.log(
-              `[dice][${keyword}] "Contract" filter shows 0 results: "${labelText}".`
-            );
+            console.log(`[dice][${keyword}] "Contract" filter shows 0 results: "${labelText}".`);
             return false;
           }
         }
@@ -403,19 +347,12 @@ async function prepareSearchPage(
           await contractLabel.click({ force: true });
           console.log(`[dice][${keyword}] Clicked 'Contract' filter.`);
         } catch (e) {
-          console.warn(
-            `[dice][${keyword}] Failed to click 'Contract' label.`,
-            e
-          );
-          const contractCheckbox = page
-            .locator(selectors.employmentTypeCheckbox)
-            .first();
+          console.warn(`[dice][${keyword}] Failed to click 'Contract' label.`, e);
+          const contractCheckbox = page.locator(selectors.employmentTypeCheckbox).first();
           if (await contractCheckbox.count()) {
             await contractCheckbox
               .click({ force: true })
-              .catch((err) =>
-                console.warn("Fallback checkbox click failed", err)
-              );
+              .catch((err) => console.warn("Fallback checkbox click failed", err));
           }
         }
       }
@@ -426,9 +363,7 @@ async function prepareSearchPage(
         const applyBtn = page.locator(selectors.applyFilters).first();
         // Ensure drawer is open
         if (!(await applyBtn.isVisible())) {
-          console.log(
-            `[dice][${keyword}] Apply button not visible. Re-opening drawer...`
-          );
+          console.log(`[dice][${keyword}] Apply button not visible. Re-opening drawer...`);
           const allFiltersBtn = page.locator(selectors.allFilters).first();
           await allFiltersBtn.click();
           await page.waitForTimeout(2000);
@@ -445,25 +380,18 @@ async function prepareSearchPage(
             (url) => {
               const s = url.toString();
               // Check for presence of filters, allow CONTRACTS (plural)
-              return (
-                s.includes("filters.postedDate=ONE") &&
-                s.includes("filters.employmentType")
-              );
+              return s.includes("filters.postedDate=ONE") && s.includes("filters.employmentType");
             },
-            { timeout: 30000 }
+            { timeout: 30000 },
           );
-          console.log(
-            `[dice][${keyword}] Filters applied successfully (verified via URL).`
-          );
+          console.log(`[dice][${keyword}] Filters applied successfully (verified via URL).`);
         } catch (e) {
           console.warn(
             `[dice][${keyword}] Warning: URL did not update with expected filters within 30s. Checking if Apply button is still visible...`,
-            e
+            e,
           );
           if (await applyBtn.isVisible()) {
-            console.log(
-              `[dice][${keyword}] Apply button still visible. Clicking again...`
-            );
+            console.log(`[dice][${keyword}] Apply button still visible. Clicking again...`);
             try {
               await applyBtn.scrollIntoViewIfNeeded();
               await applyBtn.evaluate((el) => (el as HTMLElement).click());
@@ -487,7 +415,7 @@ async function collectListingRows(
   site: SiteConfig,
   keyword: string,
   runDate: Date,
-  isBackfill: boolean
+  isBackfill: boolean,
 ): Promise<JobRow[]> {
   const selectors = site.search.selectors;
   if (!selectors.card) {
@@ -521,42 +449,31 @@ async function collectListingRows(
       // 2. From candidates, keep only the outermost ones.
 
       const candidates = allMatches.filter((el) => {
-        const count = allMatches.filter(
-          (other) => el !== other && el.contains(other)
-        ).length;
+        const count = allMatches.filter((other) => el !== other && el.contains(other)).length;
         return count > 0;
       });
 
       // Keep innermost: Filter out elements that contain another candidate
       const cards = candidates.filter(
-        (el) => !candidates.some((child) => child !== el && el.contains(child))
+        (el) => !candidates.some((child) => child !== el && el.contains(child)),
       );
 
       return cards.map((card) => {
         const titleEl = selectors.title
           ? Array.from(card.querySelectorAll(selectors.title)).find(
-              (el) =>
-                !(el as HTMLElement).innerText.toLowerCase().includes("apply")
+              (el) => !(el as HTMLElement).innerText.toLowerCase().includes("apply"),
             )
           : null;
-        const companyEl = selectors.company
-          ? card.querySelector(selectors.company)
-          : null;
+        const companyEl = selectors.company ? card.querySelector(selectors.company) : null;
         const locationEl = selectors.locationText
           ? card.querySelector(selectors.locationText)
           : null;
-        const postedEl = selectors.posted
-          ? card.querySelector(selectors.posted)
-          : null;
+        const postedEl = selectors.posted ? card.querySelector(selectors.posted) : null;
 
         const title = titleEl ? (titleEl as HTMLElement).innerText.trim() : "";
         const href = titleEl ? titleEl.getAttribute("href") : "";
-        const company = companyEl
-          ? (companyEl as HTMLElement).innerText.trim()
-          : "";
-        let location = locationEl
-          ? (locationEl as HTMLElement).innerText.trim()
-          : "";
+        const company = companyEl ? (companyEl as HTMLElement).innerText.trim() : "";
+        let location = locationEl ? (locationEl as HTMLElement).innerText.trim() : "";
         let posted = postedEl ? (postedEl as HTMLElement).innerText.trim() : "";
 
         const text = (card as HTMLElement).innerText;
@@ -569,9 +486,7 @@ async function collectListingRows(
           } else if (text.match(/Just now/i)) {
             posted = "Just now";
           } else {
-            const agoMatch = text.match(
-              /(\d+\s+(?:minute|hour|day|week)s?\s+ago)/i
-            );
+            const agoMatch = text.match(/(\d+\s+(?:minute|hour|day|week)s?\s+ago)/i);
             if (agoMatch) {
               posted = agoMatch[1];
             }
@@ -592,9 +507,7 @@ async function collectListingRows(
       });
     }, selectors);
 
-    console.log(
-      `[dice][${keyword}] Found ${rawJobs.length} cards on page ${pageIndex}`
-    );
+    console.log(`[dice][${keyword}] Found ${rawJobs.length} cards on page ${pageIndex}`);
 
     for (const raw of rawJobs) {
       if (!raw.title || !raw.href) {
@@ -625,20 +538,18 @@ async function collectListingRows(
     // Check if the last *valid* job is from today
     if (rows.length > 0) {
       // Find the last row that has a non-empty posted date
-      const lastValidRow = [...rows]
-        .reverse()
-        .find((r) => r.posted && r.posted.length > 0);
+      const lastValidRow = [...rows].reverse().find((r) => r.posted && r.posted.length > 0);
 
       if (lastValidRow) {
         if (!isPostedToday(lastValidRow.posted)) {
           console.log(
-            `[dice][${keyword}] Last valid job posted "${lastValidRow.posted}" is not from today. Stopping pagination.`
+            `[dice][${keyword}] Last valid job posted "${lastValidRow.posted}" is not from today. Stopping pagination.`,
           );
           break;
         }
       } else {
         console.warn(
-          `[dice][${keyword}] Warning: All jobs in this batch have empty posted dates. Cannot determine if we should stop. Proceeding...`
+          `[dice][${keyword}] Warning: All jobs in this batch have empty posted dates. Cannot determine if we should stop. Proceeding...`,
         );
       }
     }
@@ -685,7 +596,7 @@ async function evaluateDetailedJobs(
   context: BrowserContext,
   roles: SessionRole[],
   seen: Set<string>,
-  site: SiteConfig
+  site: SiteConfig,
 ): Promise<JobRow[]> {
   const accepted: JobRow[] = [];
   for (let i = 0; i < roles.length; i++) {
@@ -696,6 +607,58 @@ async function evaluateDetailedJobs(
         waitUntil: "domcontentloaded",
         timeout: 60000,
       });
+
+      // Check if the job is no longer available using selector-based detection
+      // Look for visible warning/alert elements that indicate the job is unavailable
+      const unavailableSelectors = [
+        // Dice's specific unavailable job alert
+        '[data-cy="jobUnavailable"]',
+        '[class*="job-unavailable"]',
+        '[class*="expired"]',
+        // Common alert/warning patterns
+        '.alert:has-text("no longer available")',
+        '[role="alert"]:has-text("no longer available")',
+        // Text-based fallback with specific container
+        'div:has-text("Sorry this job is no longer available")',
+      ];
+
+      let isJobUnavailable = false;
+      for (const selector of unavailableSelectors) {
+        try {
+          const element = page.locator(selector).first();
+          if ((await element.count()) > 0 && (await element.isVisible())) {
+            isJobUnavailable = true;
+            break;
+          }
+        } catch {
+          // Selector didn't match, continue to next
+        }
+      }
+
+      // Fallback: Check for the specific text in the visible page content
+      if (!isJobUnavailable) {
+        const bodyText = await page
+          .locator("body")
+          .innerText()
+          .catch(() => "");
+        if (
+          bodyText.includes("Sorry this job is no longer available") ||
+          bodyText.includes("this job is no longer available")
+        ) {
+          isJobUnavailable = true;
+        }
+      }
+
+      if (isJobUnavailable) {
+        console.log(
+          `[dice][${role.keyword}] Skipped "${role.title}" – Job is no longer available.`,
+        );
+        // Add to seen so it's skipped in future sessions
+        const jobKey = computeJobKey(role);
+        seen.add(jobKey);
+        continue;
+      }
+
       let description = await extractDescription(page, site);
 
       // Validate Employment Type if selector is present
@@ -726,7 +689,7 @@ async function evaluateDetailedJobs(
             partTimeRegex.test(typeText)
           ) {
             console.log(
-              `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: "W2", "Full Time", or "Part Time" found.`
+              `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: "W2", "Full Time", or "Part Time" found.`,
             );
             rejectedLogger.log({
               title: role.title,
@@ -751,7 +714,7 @@ async function evaluateDetailedJobs(
 
           if (!hasC2C) {
             console.log(
-              `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: Employment type "${typeText}" does not include C2C.`
+              `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: Employment type "${typeText}" does not include C2C.`,
             );
             rejectedLogger.log({
               title: role.title,
@@ -772,9 +735,7 @@ async function evaluateDetailedJobs(
 
       // Validate Posted Date if selector is present
       if (site.search.selectors.postedDateDetail) {
-        const postedDateEl = page
-          .locator(site.search.selectors.postedDateDetail)
-          .first();
+        const postedDateEl = page.locator(site.search.selectors.postedDateDetail).first();
         if (await postedDateEl.isVisible()) {
           const text = (await postedDateEl.innerText()) || "";
 
@@ -806,7 +767,7 @@ async function evaluateDetailedJobs(
           // 1. If Posted > 15 days -> REJECT
           if (postedDaysAgo > 15) {
             console.log(
-              `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: Posted ${postedDaysAgo} days ago (> 15 days).`
+              `[dice][${role.keyword}] Rejected "${role.title}" (${role.location}) – Reason: Posted ${postedDaysAgo} days ago (> 15 days).`,
             );
             rejectedLogger.log({
               title: role.title,
@@ -826,8 +787,7 @@ async function evaluateDetailedJobs(
           // 2. If Posted > 1 day (i.e., 2 days or more)
           if (postedDaysAgo > 1) {
             // MUST be updated recently (<= 1 day)
-            const isUpdatedRecently =
-              updatedDaysAgo !== -1 && updatedDaysAgo <= 1;
+            const isUpdatedRecently = updatedDaysAgo !== -1 && updatedDaysAgo <= 1;
 
             if (!isUpdatedRecently) {
               console.log(
@@ -835,7 +795,7 @@ async function evaluateDetailedJobs(
                   role.location
                 }) – Reason: Posted ${postedDaysAgo} days ago and not updated recently (Updated: ${
                   updatedDaysAgo === -1 ? "Never" : updatedDaysAgo + " days ago"
-                }).`
+                }).`,
               );
               rejectedLogger.log({
                 title: role.title,
@@ -860,7 +820,7 @@ async function evaluateDetailedJobs(
       console.log(
         `[dice][AI] Detail candidate #${i + 1}/${roles.length} "${
           role.title
-        }" (${role.location}) – description length ${description.length} chars.`
+        }" (${role.location}) – description length ${description.length} chars.`,
       );
       const detailResult = await evaluateJobDetail(
         {
@@ -870,14 +830,14 @@ async function evaluateDetailedJobs(
           url: role.url,
           description,
         },
-        site
+        site,
       );
 
       if (!detailResult.accepted) {
         console.log(
           `[dice][AI] Rejected "${role.title}" (${role.location}) – Reason: ${
             detailResult.reasoning || "Model marked as not relevant."
-          }`
+          }`,
         );
         rejectedLogger.log({
           title: role.title,
@@ -909,17 +869,13 @@ async function evaluateDetailedJobs(
   }
 
   console.log(
-    `[dice][AI] Detail evaluation accepted ${accepted.length} roles out of ${roles.length}.`
+    `[dice][AI] Detail evaluation accepted ${accepted.length} roles out of ${roles.length}.`,
   );
   return accepted;
 }
 
-export async function extractDescription(
-  page: Page,
-  site: SiteConfig
-): Promise<string> {
-  const selector =
-    site.search.selectors.description || "div[data-cy='job-description']";
+export async function extractDescription(page: Page, site: SiteConfig): Promise<string> {
+  const selector = site.search.selectors.description || "div[data-cy='job-description']";
   const locator = page.locator(selector).first();
   if (await locator.count()) {
     try {
@@ -934,9 +890,7 @@ export async function extractDescription(
   return await page.content();
 }
 
-async function filterTitlesWithAi(
-  rows: SessionRole[]
-): Promise<TitleFilterResult> {
+async function filterTitlesWithAi(rows: SessionRole[]): Promise<TitleFilterResult> {
   const entries: TitleEntry[] = rows.map((row) => ({
     title: row.title,
     company: row.company,
@@ -947,10 +901,7 @@ async function filterTitlesWithAi(
   return findIrrelevantJobIds(entries);
 }
 
-async function writeSessionRoles(
-  sessionPaths: SessionPaths,
-  rows: SessionRole[]
-): Promise<void> {
+async function writeSessionRoles(sessionPaths: SessionPaths, rows: SessionRole[]): Promise<void> {
   const headers = [
     "session_id",
     "keyword",
@@ -975,7 +926,7 @@ async function writeSessionRoles(
       row.url,
       row.job_id ?? "",
       row.scraped_at,
-    ].join(",")
+    ].join(","),
   );
 
   const payload = [headers.join(","), ...lines].join("\n") + "\n";
