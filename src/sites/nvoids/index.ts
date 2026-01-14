@@ -539,7 +539,7 @@ async function evaluateDetailedJobs(
       });
       let description = await extractDescription(page);
 
-      // Check for personal emails only (skip AI evaluation to save costs)
+      // Check for personal emails - reject jobs with only personal emails (@gmail.com, etc.)
       // Exception: PA (Pennsylvania) jobs are allowed even with personal emails
       const emailCheck = hasOnlyPersonalEmails(description, role.location, role.title);
       if (emailCheck.hasEmails && emailCheck.onlyPersonal && !emailCheck.isPAExempt) {
@@ -565,30 +565,13 @@ async function evaluateDetailedJobs(
         continue;
       }
 
-      // Log if PA exemption was applied
+      // Log if PA exemption was applied (personal email + PA location = accepted)
       if (emailCheck.hasEmails && emailCheck.onlyPersonal && emailCheck.isPAExempt) {
         console.log(
           `[nvoids] PA exemption applied for "${role.title}" – Personal emails found (${emailCheck.emails.join(
             ", ",
           )}) but job is in PA location.`,
         );
-      }
-
-      // Check for C2C employment type (required filter)
-      if (!isC2CJob(description)) {
-        console.log(`[nvoids] Rejected "${role.title}" – Not C2C employment type`);
-        rejectedLogger.log({
-          title: role.title,
-          site: site.key,
-          url: role.url,
-          jd: description,
-          reason: "Not C2C employment type (looking for C2C only)",
-          scraped_at: role.scraped_at,
-          type: "detail",
-        });
-        const jobKey = computeJobKey(role);
-        seen.add(jobKey);
-        continue;
       }
 
       console.log(
@@ -844,27 +827,6 @@ function isRemoteJob(title: string, location: string): boolean {
     text.includes("WFH") ||
     text.includes("TELECOMMUTE") ||
     location.toUpperCase().includes("REMOTE, REMOTE")
-  );
-}
-
-/**
- * Check if job is C2C (Corp to Corp) from job description
- * Looks for "Hire type:" line containing "C2C"
- */
-function isC2CJob(description: string): boolean {
-  // Pattern: "Hire type : CTH / C2C / FTE" or "Hire type: C2C"
-  const hireTypeMatch = description.match(/hire\s*type\s*[:：]\s*([^\n]+)/i);
-  if (hireTypeMatch) {
-    const hireTypes = hireTypeMatch[1].toUpperCase();
-    return hireTypes.includes("C2C") || hireTypes.includes("CORP TO CORP");
-  }
-
-  // Fallback: check anywhere in description for C2C mentions
-  const upperDesc = description.toUpperCase();
-  return (
-    upperDesc.includes("C2C") ||
-    upperDesc.includes("CORP TO CORP") ||
-    upperDesc.includes("CORP-TO-CORP")
   );
 }
 
