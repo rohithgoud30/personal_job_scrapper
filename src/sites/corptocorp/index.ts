@@ -303,9 +303,35 @@ async function prepareSearchPage(
   site: SiteConfig,
   keyword: string
 ): Promise<void> {
-  await page.goto(site.search.url, { waitUntil: "domcontentloaded" });
-  // Initial popup check
-  await dismissPopup(page, keyword);
+  const maxRetries = 3;
+  const timeout = 60000; // Increased timeout for slow/blocking sites
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await page.goto(site.search.url, {
+        waitUntil: "domcontentloaded",
+        timeout,
+      });
+      // Initial popup check
+      await dismissPopup(page, keyword);
+      return; // Success
+    } catch (error) {
+      const isTimeout =
+        error instanceof Error &&
+        (error.message.includes("Timeout") ||
+          error.message.includes("timeout"));
+
+      if (attempt < maxRetries && isTimeout) {
+        const backoffMs = attempt * 5000;
+        console.warn(
+          `[corptocorp][${keyword}] Navigation attempt ${attempt}/${maxRetries} failed (timeout). Retrying in ${backoffMs / 1000}s...`
+        );
+        await page.waitForTimeout(backoffMs);
+      } else {
+        throw error;
+      }
+    }
+  }
 }
 
 async function dismissPopup(page: Page, keyword: string): Promise<void> {

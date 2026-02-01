@@ -103,12 +103,11 @@ export async function findIrrelevantJobIds(
 
   const systemPrompt = Array.isArray(prompts) ? prompts.join(" ") : prompts;
 
-  const client = getOpenAiClient();
+  let failedBatches = 0;
 
   for (let i = 0; i < entries.length; i += BATCH_SIZE) {
     const batch = entries.slice(i, i + BATCH_SIZE);
     const userContent = JSON.stringify(batch, null, 2);
-    let lastError: unknown;
     let batchSuccess = false;
 
     console.log(
@@ -117,6 +116,7 @@ export async function findIrrelevantJobIds(
       }/${Math.ceil(entries.length / BATCH_SIZE)} (${batch.length} items)...`
     );
 
+    // 2 attempts: first with primary model, then fallback to GLM
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         let modelToUse: string;
@@ -132,7 +132,7 @@ export async function findIrrelevantJobIds(
           isVertex = true;
         }
 
-        console.log(`[AI] Attempt ${attempt}: Using model ${modelToUse}...`);
+        console.log(`[AI] Attempt ${attempt}/2: Using model ${modelToUse}...`);
 
         if (isVertex) {
           const vertexModel = getVertexModel(modelToUse, systemPrompt);
@@ -141,6 +141,14 @@ export async function findIrrelevantJobIds(
           });
           const responseText =
             result.response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+
+          // Detect HTML error pages (rate-limit/block responses)
+          if (responseText.trim().startsWith("<!DOCTYPE") || responseText.trim().startsWith("<html")) {
+            throw new Error(
+              `API returned HTML instead of JSON (likely rate-limited or blocked). Response preview: ${responseText.slice(0, 100)}...`
+            );
+          }
+
           const parsed: AiIrrelevantResponse = JSON.parse(responseText);
           processTitleResponse(parsed, combinedRemovalSet, combinedReasons);
         } else {
@@ -156,6 +164,14 @@ export async function findIrrelevantJobIds(
           });
 
           const message = completion.choices[0]?.message?.content ?? "{}";
+
+          // Detect HTML error pages
+          if (message.trim().startsWith("<!DOCTYPE") || message.trim().startsWith("<html")) {
+            throw new Error(
+              `API returned HTML instead of JSON (likely rate-limited or blocked). Response preview: ${message.slice(0, 100)}...`
+            );
+          }
+
           const parsed: AiIrrelevantResponse = JSON.parse(message);
           processTitleResponse(parsed, combinedRemovalSet, combinedReasons);
         }
@@ -163,8 +179,18 @@ export async function findIrrelevantJobIds(
         batchSuccess = true;
         break;
       } catch (error) {
-        lastError = error;
-        console.warn(`[AI] Attempt ${attempt} for title batch failed:`, error);
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const isRateLimitOrHtml =
+          errorMsg.includes("HTML instead of JSON") ||
+          errorMsg.includes("rate") ||
+          errorMsg.includes("429") ||
+          errorMsg.includes("<!DOCTYPE");
+
+        console.warn(
+          `[AI] Attempt ${attempt}/2 for title batch failed:`,
+          isRateLimitOrHtml ? errorMsg : error
+        );
+
         if (attempt < 2) {
           await sleepBackoff(attempt);
         }
@@ -172,12 +198,18 @@ export async function findIrrelevantJobIds(
     }
 
     if (!batchSuccess) {
-      console.error(
-        `[AI] Failed to process title batch starting at index ${i}`,
-        lastError
+      failedBatches++;
+      console.warn(
+        `[AI] Failed to process title batch ${Math.floor(i / BATCH_SIZE) + 1} after 2 attempts. Moving to next batch. (${batch.length} jobs will pass through without AI filtering)`
       );
-      throw lastError ?? new Error("Title AI filter failed after retries.");
+      // Always continue to next batch - never throw
     }
+  }
+
+  if (failedBatches > 0) {
+    console.warn(
+      `[AI] Title filtering completed with ${failedBatches} failed batch(es). Some jobs passed through without filtering.`
+    );
   }
 
   return { removalSet: combinedRemovalSet, reasons: combinedReasons };
