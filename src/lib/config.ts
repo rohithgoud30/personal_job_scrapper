@@ -105,13 +105,23 @@ export interface CookieConsentConfig {
 
 const DEFAULT_CONFIG = path.resolve(process.cwd(), "config.json");
 
+let cachedConfig: ConfigFile | null = null;
+let cachedConfigPath: string | null = null;
+
 export function loadConfig(customPath?: string): ConfigFile {
   const configPath = path.resolve(process.cwd(), customPath ?? DEFAULT_CONFIG);
-  if (!fs.existsSync(configPath)) {
+
+  if (cachedConfig && cachedConfigPath === configPath) {
+    return cachedConfig;
+  }
+
+  let raw: string;
+  try {
+    raw = fs.readFileSync(configPath, "utf-8");
+  } catch {
     throw new Error(`Config file not found at ${configPath}`);
   }
 
-  const raw = fs.readFileSync(configPath, "utf-8");
   const data = JSON.parse(raw) as ConfigFile;
 
   const shared = normalizeKeywordsInput(data.sharedSearchKeywords);
@@ -136,6 +146,8 @@ export function loadConfig(customPath?: string): ConfigFile {
     });
   }
 
+  cachedConfig = data;
+  cachedConfigPath = configPath;
   return data;
 }
 

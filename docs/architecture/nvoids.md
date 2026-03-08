@@ -51,7 +51,7 @@ Ensure your `config.json` includes the `nvoids` configuration block:
 Run the scraper specifically for Nvoids:
 
 ```bash
-npm start -- --site=nvoids
+pnpm start -- --site=nvoids
 ```
 
 ## Output

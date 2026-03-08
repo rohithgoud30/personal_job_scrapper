@@ -1,7 +1,8 @@
 import OpenAI from "openai";
-import { VertexAI, GenerativeModel } from "@google-cloud/vertexai";
+import { GoogleGenAI } from "@google/genai";
 import { env, requireEnv, requireNumericEnv } from "./env";
 import { loadConfig, SiteConfig } from "./config";
+import { sleep } from "./throttle";
 
 export interface TitleEntry {
   title: string;
@@ -30,7 +31,7 @@ export interface TitleFilterResult {
 }
 
 let openAiClient: OpenAI | null = null;
-let vertexAiClient: VertexAI | null = null;
+let geminiClient: GoogleGenAI | null = null;
 
 function getOpenAiClient(): OpenAI {
   if (!openAiClient) {
@@ -43,40 +44,80 @@ function getOpenAiClient(): OpenAI {
   return openAiClient;
 }
 
-function getVertexClient(): VertexAI {
-  if (!vertexAiClient) {
-    const project = process.env.GOOGLE_CLOUD_PROJECT;
-    if (!project) {
-      throw new Error(
-        "GOOGLE_CLOUD_PROJECT environment variable is required but not set. Please add it to your .env file."
-      );
-    }
-
-    const location = requireEnv("googleCloudLocation");
-
-    vertexAiClient = new VertexAI({
-      project,
-      location,
-    });
+function getGeminiClient(): GoogleGenAI {
+  if (!geminiClient) {
+    const apiKey = requireEnv("geminiApiKey");
+    geminiClient = new GoogleGenAI({ apiKey });
   }
-  return vertexAiClient;
+  return geminiClient;
 }
 
-function getVertexModel(
-  modelName: string,
-  systemInstruction?: string
-): GenerativeModel {
-  const client = getVertexClient();
-  return client.getGenerativeModel({
-    model: modelName,
-    systemInstruction: systemInstruction
-      ? { role: "system", parts: [{ text: systemInstruction }] }
-      : undefined,
-    generationConfig: {
-      responseMimeType: "application/json",
+function assertNotHtml(text: string): void {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html")) {
+    throw new Error(
+      `API returned HTML instead of JSON (likely rate-limited or blocked). Response preview: ${text.slice(0, 100)}...`
+    );
+  }
+}
+
+async function callGemini(
+  model: string,
+  systemPrompt: string,
+  userContent: string
+): Promise<string> {
+  const client = getGeminiClient();
+  const result = await client.models.generateContent({
+    model,
+    contents: userContent,
+    config: {
+      systemInstruction: systemPrompt,
       temperature: 0,
+      responseMimeType: "application/json",
     },
   });
+  const responseText = result.text || "{}";
+  assertNotHtml(responseText);
+  return responseText;
+}
+
+async function callOpenAi(
+  model: string,
+  systemPrompt: string,
+  userContent: string
+): Promise<string> {
+  const client = getOpenAiClient();
+  const completion = await client.chat.completions.create({
+    model,
+    temperature: 0,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userContent },
+    ],
+  });
+  const message = completion.choices[0]?.message?.content ?? "{}";
+  assertNotHtml(message);
+  return message;
+}
+
+function isGeminiProvider(): boolean {
+  return requireEnv("aiProvider") === "gemini";
+}
+
+async function callAi(
+  model: string,
+  systemPrompt: string,
+  userContent: string
+): Promise<string> {
+  if (isGeminiProvider()) {
+    return callGemini(model, systemPrompt, userContent);
+  }
+  return callOpenAi(model, systemPrompt, userContent);
+}
+
+function normalizePrompt(prompts: string | string[]): string {
+  return Array.isArray(prompts) ? prompts.join(" ") : prompts;
 }
 
 export async function findIrrelevantJobIds(
@@ -90,7 +131,7 @@ export async function findIrrelevantJobIds(
   const combinedRemovalSet = new Set<string>();
   const combinedReasons = new Map<string, string>();
 
-  const config = await loadConfig();
+  const config = loadConfig();
   const prompts = config.ai?.prompts?.titleFilter;
 
   if (!prompts || prompts.length === 0) {
@@ -101,7 +142,7 @@ export async function findIrrelevantJobIds(
 
   console.log("[AI] Loaded title filter prompt from config.");
 
-  const systemPrompt = Array.isArray(prompts) ? prompts.join(" ") : prompts;
+  const systemPrompt = normalizePrompt(prompts);
 
   let failedBatches = 0;
 
@@ -116,65 +157,19 @@ export async function findIrrelevantJobIds(
       }/${Math.ceil(entries.length / BATCH_SIZE)} (${batch.length} items)...`
     );
 
-    // 2 attempts: first with primary model, then fallback to GLM
+    // 2 attempts: first with primary model, then fallback
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        let modelToUse: string;
-        let isVertex = false;
-
-        if (attempt === 1) {
-          modelToUse = requireEnv("aiTitleFilterModel");
-        } else {
-          modelToUse = requireEnv("fallbackAiDetailEvalModel");
-        }
-
-        if (modelToUse.startsWith("gemini-")) {
-          isVertex = true;
-        }
+        const modelToUse =
+          attempt === 1
+            ? requireEnv("aiTitleFilterModel")
+            : requireEnv("fallbackAiDetailEvalModel");
 
         console.log(`[AI] Attempt ${attempt}/2: Using model ${modelToUse}...`);
 
-        if (isVertex) {
-          const vertexModel = getVertexModel(modelToUse, systemPrompt);
-          const result = await vertexModel.generateContent({
-            contents: [{ role: "user", parts: [{ text: userContent }] }],
-          });
-          const responseText =
-            result.response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-
-          // Detect HTML error pages (rate-limit/block responses)
-          if (responseText.trim().startsWith("<!DOCTYPE") || responseText.trim().startsWith("<html")) {
-            throw new Error(
-              `API returned HTML instead of JSON (likely rate-limited or blocked). Response preview: ${responseText.slice(0, 100)}...`
-            );
-          }
-
-          const parsed: AiIrrelevantResponse = JSON.parse(responseText);
-          processTitleResponse(parsed, combinedRemovalSet, combinedReasons);
-        } else {
-          const client = getOpenAiClient();
-          const completion = await client.chat.completions.create({
-            model: modelToUse,
-            temperature: 0,
-            response_format: { type: "json_object" },
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userContent },
-            ],
-          });
-
-          const message = completion.choices[0]?.message?.content ?? "{}";
-
-          // Detect HTML error pages
-          if (message.trim().startsWith("<!DOCTYPE") || message.trim().startsWith("<html")) {
-            throw new Error(
-              `API returned HTML instead of JSON (likely rate-limited or blocked). Response preview: ${message.slice(0, 100)}...`
-            );
-          }
-
-          const parsed: AiIrrelevantResponse = JSON.parse(message);
-          processTitleResponse(parsed, combinedRemovalSet, combinedReasons);
-        }
+        const responseText = await callAi(modelToUse, systemPrompt, userContent);
+        const parsed: AiIrrelevantResponse = JSON.parse(responseText);
+        processTitleResponse(parsed, combinedRemovalSet, combinedReasons);
 
         batchSuccess = true;
         break;
@@ -202,7 +197,6 @@ export async function findIrrelevantJobIds(
       console.warn(
         `[AI] Failed to process title batch ${Math.floor(i / BATCH_SIZE) + 1} after 2 attempts. Moving to next batch. (${batch.length} jobs will pass through without AI filtering)`
       );
-      // Always continue to next batch - never throw
     }
   }
 
@@ -219,7 +213,7 @@ export async function evaluateJobDetail(
   payload: DetailPayload,
   siteConfig?: SiteConfig
 ): Promise<{ accepted: boolean; reasoning: string }> {
-  const config = await loadConfig();
+  const config = loadConfig();
   const prompts =
     siteConfig?.ai?.prompts?.detailEvaluation ||
     config.ai?.prompts?.detailEvaluation;
@@ -232,62 +226,37 @@ export async function evaluateJobDetail(
 
   console.log("[AI] Loaded detail evaluation prompt from config.");
 
-  const systemPrompt = Array.isArray(prompts) ? prompts.join(" ") : prompts;
+  const systemPrompt = normalizePrompt(prompts);
 
   const modelName = requireEnv("aiDetailEvalModel");
-  // We don't instantiate the model here anymore because we might switch models/clients in the loop.
 
   const userContent = `Title: ${payload.title}\nCompany: ${payload.company}\nLocation: ${payload.location}\nURL: ${payload.url}\nDescription:\n${payload.description}`;
 
   let lastError: unknown;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      // Fallback to OpenAI on any retry (attempt 2+)
-      // This handles token limits, timeouts, or any other Vertex AI errors.
       const useFallback = attempt >= 2;
-      const fallbackModel = requireEnv("fallbackAiDetailEvalModel");
 
+      let responseText: string;
       if (useFallback) {
+        const fallbackModel = requireEnv("fallbackAiDetailEvalModel");
         console.log(
           `[AI] Attempt ${attempt}: Using fallback model ${fallbackModel}...`
         );
-        const client = getOpenAiClient();
-        const completion = await client.chat.completions.create({
-          model: fallbackModel,
-          temperature: 0,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userContent },
-          ],
-        });
-
-        const message = completion.choices[0]?.message?.content ?? "{}";
-        const parsed = JSON.parse(message);
-        return {
-          accepted: Boolean(parsed.accepted),
-          reasoning:
-            typeof parsed.reasoning === "string" ? parsed.reasoning : "",
-        };
+        responseText = await callOpenAi(fallbackModel, systemPrompt, userContent);
       } else {
-        // Use Primary Vertex Model
         console.log(
           `[AI] Attempt ${attempt}: Using primary model ${modelName}...`
         );
-        const model = getVertexModel(modelName, systemPrompt);
-        const result = await model.generateContent({
-          contents: [{ role: "user", parts: [{ text: userContent }] }],
-        });
-
-        const responseText =
-          result.response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-        const parsed = JSON.parse(responseText);
-        return {
-          accepted: Boolean(parsed.accepted),
-          reasoning:
-            typeof parsed.reasoning === "string" ? parsed.reasoning : "",
-        };
+        responseText = await callAi(modelName, systemPrompt, userContent);
       }
+
+      const parsed = JSON.parse(responseText);
+      return {
+        accepted: Boolean(parsed.accepted),
+        reasoning:
+          typeof parsed.reasoning === "string" ? parsed.reasoning : "",
+      };
     } catch (error) {
       console.warn(`[AI] Attempt ${attempt} failed:`, error);
       lastError = error;
@@ -329,6 +298,5 @@ function processTitleResponse(
 
 function sleepBackoff(attempt: number): Promise<void> {
   const baseDelay = requireNumericEnv("aiRetryDelayMs");
-  const delayMs = attempt * baseDelay;
-  return new Promise((resolve) => setTimeout(resolve, delayMs));
+  return sleep((attempt * baseDelay) / 1000);
 }

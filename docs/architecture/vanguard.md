@@ -144,23 +144,23 @@ data/vanguardjobs.com/{MM_DD_YYYY}/sessions/{session_id}/roles.csv
 
 ```bash
 # Use shared keywords from config
-npm run start -- --site vanguard
+pnpm start -- --site vanguard
 
 # Override with custom keywords
-npm run start -- --site vanguard --keywords "java,python,react"
+pnpm start -- --site vanguard --keywords "java,python,react"
 
 # Skip batch delay for faster execution
-npm run start -- --site vanguard --skip-batch-wait
+pnpm start -- --site vanguard --skip-batch-wait
 ```
 
 ### Advanced Usage
 
 ```bash
 # Resume AI evaluation for existing session
-npm run start -- --site vanguard --resume-session session_1234567890
+pnpm start -- --site vanguard --resume-session session_1234567890
 
 # Combination
-npm run start -- --site vanguard --keywords "full stack" --skip-batch-wait
+pnpm start -- --site vanguard --keywords "full stack" --skip-batch-wait
 ```
 
 ## Data Flow

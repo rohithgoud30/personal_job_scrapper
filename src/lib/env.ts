@@ -5,10 +5,11 @@ dotenv.config();
 export const env = {
   aiApiKey: process.env.AI_API_KEY ?? "",
   aiBaseUrl: process.env.AI_BASE_URL ?? "",
+  aiProvider: (process.env.AI_PROVIDER ?? "").toLowerCase(),
   aiTitleFilterModel: process.env.AI_TITLE_FILTER_MODEL ?? "",
   aiDetailEvalModel: process.env.AI_DETAIL_EVAL_MODEL ?? "",
   fallbackAiDetailEvalModel: process.env.FALLBACK_AI_DETAIL_EVAL_MODEL ?? "",
-  googleCloudLocation: process.env.GOOGLE_CLOUD_LOCATION ?? "",
+  geminiApiKey: process.env.GEMINI_API_KEY ?? "",
   titleBatchSize: Number(process.env.TITLE_BATCH_SIZE ?? "0") || 0,
   keywordBatchSize: Number(process.env.KEYWORD_BATCH_SIZE ?? "0") || 0,
   aiRetryDelayMs: Number(process.env.AI_RETRY_DELAY_MS ?? "0") || 0,
@@ -19,10 +20,11 @@ export function requireEnv(
   name:
     | "aiApiKey"
     | "aiBaseUrl"
+    | "aiProvider"
     | "aiTitleFilterModel"
     | "aiDetailEvalModel"
     | "fallbackAiDetailEvalModel"
-    | "googleCloudLocation"
+    | "geminiApiKey"
 ): string {
   const value = env[name];
   if (!value) {

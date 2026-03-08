@@ -12,7 +12,7 @@ This document explains the workflow for the `corptocorp.org` scraper, designed t
 
 ## 2. Execution Workflow
 
-The scraper is launched via `npm start -- --site=corptocorp`.
+The scraper is launched via `pnpm start -- --site=corptocorp`.
 
 ### A. Navigation & Popup Handling
 
@@ -74,7 +74,7 @@ The scraper uses a two-stage AI process to ensure high-quality results matching 
 You can re-run the AI evaluation on already scraped data (e.g., to test new visa rules) without re-scraping:
 
 ```bash
-npm start -- --site=corptocorp --session=<SESSION_ID>
+pnpm start -- --site=corptocorp --session=<SESSION_ID>
 ```
 
 This skips the browser scraping and immediately processes the staged roles in the specified session folder.

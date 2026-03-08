@@ -17,7 +17,7 @@ This document explains the workflow for the `dice` scraper, designed to aggregat
 
 ## 2. Execution Workflow
 
-The scraper is launched via `npm start -- --site=dice`.
+The scraper is launched via `pnpm start -- --site=dice`.
 
 ### A. Navigation & Filtering
 
@@ -77,5 +77,5 @@ The scraper uses the standard two-stage AI process shared across all sites.
 You can re-run the AI evaluation on already scraped data without re-scraping:
 
 ```bash
-npm start -- --site=dice --session=<SESSION_ID>
+pnpm start -- --site=dice --session=<SESSION_ID>
 ```

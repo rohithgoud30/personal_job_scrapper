@@ -10,23 +10,24 @@ git clone https://github.com/rohithgoud30/personal_job_scrapper.git
 cd personal_job_scrapper
 
 # Install dependencies
-npm install
-npx playwright install chromium
+pnpm install
+pnpm exec playwright install chromium
 
 # Configure environment
 cp .env.example .env
 # Edit .env with your API keys and configuration (see Configuration section)
 
 # Run a scraper
-npm start -- --site=corptocorp
+pnpm start -- --site=corptocorp
 ```
 
 ## 📋 Prerequisites
 
 - **Node.js** v18 or higher
+- **pnpm** (install via `corepack enable` or `npm i -g pnpm`)
 - **Git**
-- **AI API Key** (OpenAI, Google Vertex AI, Zhipu AI, or any OpenAI-compatible provider)
-- **Google Cloud Project** (if using Vertex AI for Gemini models)
+- **AI API Key** (OpenAI, Google Gemini, Zhipu AI, or any OpenAI-compatible provider)
+- **Gemini API Key** (if using Gemini models)
 
 ## ⚙️ Configuration
 
@@ -52,9 +53,11 @@ AI_TITLE_FILTER_MODEL=your-title-filter-model-here
 AI_DETAIL_EVAL_MODEL=your-detail-eval-model-here
 FALLBACK_AI_DETAIL_EVAL_MODEL=your-fallback-model-here
 
-# Required: Google Cloud Configuration (for Vertex AI)
-GOOGLE_CLOUD_PROJECT=your-gcp-project-id
-GOOGLE_CLOUD_LOCATION=your-gcp-location
+# Required: Gemini API Configuration
+GEMINI_API_KEY=your-gemini-api-key
+
+# Required: AI Provider (gemini or openai)
+AI_PROVIDER=gemini
 
 # Required: Batch Size Configuration
 TITLE_BATCH_SIZE=50
@@ -74,8 +77,8 @@ TEST_RUN_DATE=
 | `AI_TITLE_FILTER_MODEL`         | Model for Stage 1 (title filtering)   | ✅ Yes   |
 | `AI_DETAIL_EVAL_MODEL`          | Model for Stage 2 (detail evaluation) | ✅ Yes   |
 | `FALLBACK_AI_DETAIL_EVAL_MODEL` | Fallback model for Stage 2            | ✅ Yes   |
-| `GOOGLE_CLOUD_PROJECT`          | GCP project ID for Vertex AI          | ✅ Yes   |
-| `GOOGLE_CLOUD_LOCATION`         | GCP region (e.g., `us-central1`)      | ✅ Yes   |
+| `GEMINI_API_KEY`                | API key for Gemini models             | ✅ Yes   |
+| `AI_PROVIDER`                   | AI provider: `gemini` or `openai`     | ✅ Yes   |
 | `TITLE_BATCH_SIZE`              | Jobs per AI title filter batch        | ✅ Yes   |
 | `KEYWORD_BATCH_SIZE`            | Parallel keyword searches             | ✅ Yes   |
 | `AI_RETRY_DELAY_MS`             | Retry delay in milliseconds           | ✅ Yes   |
@@ -190,7 +193,7 @@ Please generate customized titleFilter and detailEvaluation prompts that will fi
 > After updating prompts, run a test with one site to verify your filters work correctly:
 >
 > ```bash
-> npm start -- --site=corptocorp
+> pnpm start -- --site=corptocorp
 > ```
 
 ## 🎯 Usage
@@ -199,22 +202,22 @@ Please generate customized titleFilter and detailEvaluation prompts that will fi
 
 ```bash
 # Dice (Tech jobs, "Today" + "Contract" filters)
-npm start -- --site=dice
+pnpm start -- --site=dice
 
 # CorpToCorp (C2C jobs, OPT/STEM OPT friendly)
-npm start -- --site=corptocorp
+pnpm start -- --site=corptocorp
 
 # Kforce (Contract roles)
-npm start -- --site=kforce
+pnpm start -- --site=kforce
 
 # Randstad USA (Contract jobs)
-npm start -- --site=randstadusa
+pnpm start -- --site=randstadusa
 
 # Vanguard (Financial services jobs)
-npm start -- --site=vanguard
+pnpm start -- --site=vanguard
 
 # Nvoids (Aggregator, "Today" filter)
-npm start -- --site=nvoids
+pnpm start -- --site=nvoids
 ```
 
 ### Data Cleanup
@@ -228,23 +231,23 @@ The tool automatically checks for old data folders (from previous days) when you
 ### Run All Sites
 
 ```bash
-npm start
+pnpm start
 ```
 
 ### Advanced Options
 
 ```bash
 # Re-run AI evaluation on existing session
-npm start -- --site=corptocorp --session=session-2025-11-19T03-23-05-227Z
+pnpm start -- --site=corptocorp --session=session-2025-11-19T03-23-05-227Z
 
 # Skip delays between keyword batches (use sparingly)
-npm start -- --site=corptocorp --fast
+pnpm start -- --site=corptocorp --fast
 
 # Override keywords for specific search
-npm start -- --site=vanguard --keywords "java,python,react"
+pnpm start -- --site=vanguard --keywords "java,python,react"
 
 # Backfill a specific date
-TEST_RUN_DATE=2025-11-14 npm start -- --site=kforce
+TEST_RUN_DATE=2025-11-14 pnpm start -- --site=kforce
 ```
 
 ## 📊 Supported Sites

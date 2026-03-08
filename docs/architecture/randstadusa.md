@@ -9,7 +9,7 @@ This mirrors the Kforce flow: headful Playwright, config‑only selectors, poste
 
 ## 2) Launch & Navigation
 
-- Command: `npm start -- --site=randstadusa` (headful, persistent profile `.playwright/randstadusa`). Scheduling only happens when you pass `--schedule`.
+- Command: `pnpm start -- --site=randstadusa` (headful, persistent profile `.playwright/randstadusa`). Scheduling only happens when you pass `--schedule`.
 - Each keyword opens in its own tab (batch size from `KEYWORD_BATCH_SIZE`), waits for `q-<slug>/` search page, accepts OneTrust cookies, sets “date” sort, applies posted‑today filter, and respects `maxPages`/polite delays.
 
 ## 3) Page Scrape

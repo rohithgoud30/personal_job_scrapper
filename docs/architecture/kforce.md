@@ -9,14 +9,14 @@ This document explains the entire workflow in plain language so anyone can under
 
 ## 2. Execution Modes & Parallelism
 
-- The default command (`npm run start:once -- --site <key>`) launches a headful persistent browser once. Keywords are processed in parallel batches (size drawn from `KEYWORD_BATCH_SIZE`), each batch using separate Playwright tabs so five keywords can run simultaneously (then the next five, etc.).
+- The default command (`pnpm start:once -- --site <key>`) launches a headful persistent browser once. Keywords are processed in parallel batches (size drawn from `KEYWORD_BATCH_SIZE`), each batch using separate Playwright tabs so five keywords can run simultaneously (then the next five, etc.).
 - Optional scheduling (`--schedule`) still uses `node-cron`, but only when you explicitly pass the flag. Multiple sites can be specified via comma-separated `--site` values.
 - Manual overrides: `--skip-batch-wait` removes the 25–30s pause between keyword batches, and `--resume-session <sessionId>` reruns only the AI filtering/detail evaluation using `data/<host>/<date>/sessions/<sessionId>/roles/new_roles.csv`.
 
 ### How to resume AI-only
 
 - Locate the session folder created by the scrape you want to reuse (example: `data/kforce.com/11_18_2025/sessions/session-2025-11-18T18-15-03-000Z/roles/new_roles.csv`).
-- Run `npm run start:once -- --site kforce --resume-session session-2025-11-18T18-15-03-000Z`.
+- Run `pnpm start:once -- --site kforce --resume-session session-2025-11-18T18-15-03-000Z`.
 - The scraper skips keyword scraping, re-applies the title filter, and re-runs detail AI scoring into the same date folder.
 
 ## 3. Browser Session & Compliance
