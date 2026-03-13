@@ -2,11 +2,13 @@
   "name": "cli-test",
   "version": "1.0.0",
   "description": "Headful hourly Kforce scraper scaffold using Playwright + TypeScript.",
-  "main": "dist/index.js",
+  "main": "dist/server.js",
   "scripts": {
     "build": "tsc --project tsconfig.json",
-    "start": "ts-node src/index.ts",
-    "start:once": "ts-node src/index.ts --once",
+    "start": "ts-node src/server.ts",
+    "cli": "ts-node src/cli.ts",
+    "cli:once": "ts-node src/cli.ts --once",
+    "serve": "ts-node src/server.ts",
     "smoke:kforce": "ts-node src/smoke/kforceSmoke.ts",
     "smoke:randstad": "ts-node src/smoke/randstadSmoke.ts",
     "smoke:kforce:keyword": "ts-node scripts/runSingleKeyword.ts",
@@ -21,13 +23,14 @@
     "@fast-csv/parse": "^5.0.5",
     "@google/genai": "^1.45.0",
     "dotenv": "^17.2.3",
+    "express": "^5.2.1",
     "fast-csv": "^5.0.5",
-    "node-cron": "^4.2.1",
     "openai": "^6.9.0",
     "playwright": "^1.56.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/express": "^5.0.3",
     "@types/node": "^24.10.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"

@@ -16,6 +16,11 @@ export const env = {
   keywordBatchSize: Number(process.env.KEYWORD_BATCH_SIZE ?? "0") || 0,
   aiRetryDelayMs: Number(process.env.AI_RETRY_DELAY_MS ?? "0") || 0,
   runDateOverride: (process.env.TEST_RUN_DATE ?? "").trim(),
+  // Scraper HTTP server
+  scraperPort: Number(process.env.SCRAPER_PORT ?? "3333"),
+  // Telegram
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
+  telegramChatId: process.env.TELEGRAM_CHAT_ID ?? "",
 };
 
 export function requireEnv(

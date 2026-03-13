@@ -1,0 +1,52 @@
+{
+  "name": "Live Mode Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "job-accepted",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "job-accepted"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ '🆕 **' + $json.body.title + '** | ' + $json.body.site + '\\n📍 ' + ($json.body.location || 'N/A') + '\\n📅 Posted: ' + ($json.body.posted || 'N/A') + '\\n\\n🔗 ' + $json.body.url }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "send-live-job",
+      "name": "Send Live Job",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [470, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Send Live Job", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [{ "name": "live-mode" }, { "name": "telegram" }],
+  "triggerCount": 1
+}

@@ -34,14 +34,14 @@ export async function runNvoidsSite(
   site: SiteConfig,
   output: OutputConfig,
   options: RunOptions = {},
-): Promise<void> {
+): Promise<JobRow[]> {
   const resumeSessionId = options.resumeSessionId?.trim();
   const skipBatchDelay = Boolean(options.skipBatchPause);
   const keywords = normalizeKeywords(site.search.criteria.searchKeywords);
 
   if (!resumeSessionId && !keywords.length) {
     console.warn("[nvoids] No keywords configured. Skipping run.");
-    return;
+    return [];
   }
 
   const runDateOverride = getRunDateOverride();
@@ -57,7 +57,7 @@ export async function runNvoidsSite(
       console.warn(
         `[nvoids] Session ${resumeSessionId} not found under ${path.join(output.root, site.host)}.`,
       );
-      return;
+      return [];
     }
 
     outputPaths = located.outputPaths;
@@ -121,13 +121,13 @@ export async function runNvoidsSite(
 
       if (!staged.size) {
         console.log("[nvoids] No new roles detected for this session.");
-        return;
+        return [];
       }
 
       stagedArray = Array.from(staged.values());
     } else if (!stagedArray.length) {
       console.log(`[nvoids] Session ${resumeSessionId} has no staged roles to evaluate.`);
-      return;
+      return [];
     }
 
     console.log(`[nvoids][AI] Running title filter on ${stagedArray.length} staged roles...`);
@@ -165,7 +165,7 @@ export async function runNvoidsSite(
       console.log("[nvoids] AI filtered out all titles for this session.");
       await writeSessionRoles(sessionPaths, filtered);
       await saveSeenStore(outputPaths.seenFile, seen);
-      return;
+      return [];
     }
 
     await writeSessionRoles(sessionPaths, filtered);
@@ -175,16 +175,17 @@ export async function runNvoidsSite(
       } roles. ${filtered.length} remain for detail evaluation.`,
     );
 
-    const acceptedRows = await evaluateDetailedJobs(context, filtered, seen, site);
+    const acceptedRows = await evaluateDetailedJobs(context, filtered, seen, site, options.onJobAccepted);
     if (!acceptedRows.length) {
       console.log("[nvoids] No jobs approved after detail evaluation.");
       await saveSeenStore(outputPaths.seenFile, seen);
-      return;
+      return [];
     }
 
     await appendJobRows(outputPaths.csvFile, acceptedRows);
     await saveSeenStore(outputPaths.seenFile, seen);
     console.log(`[nvoids] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`);
+    return acceptedRows;
   } finally {
     await context.close();
   }
@@ -522,6 +523,7 @@ async function evaluateDetailedJobs(
   roles: SessionRole[],
   seen: Set<string>,
   site: SiteConfig,
+  onJobAccepted?: (job: JobRow) => void,
 ): Promise<JobRow[]> {
   const accepted: JobRow[] = [];
   for (let i = 0; i < roles.length; i++) {
@@ -615,6 +617,7 @@ async function evaluateDetailedJobs(
 
       seen.add(jobKey);
       accepted.push(role);
+      onJobAccepted?.(role);
     } catch (error) {
       console.error(`[nvoids] Failed to evaluate detail for ${role.url}`, error);
     } finally {

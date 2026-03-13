@@ -38,7 +38,7 @@ export async function runVanguardSite(
   site: SiteConfig,
   output: OutputConfig,
   options: RunOptions = {}
-): Promise<void> {
+): Promise<JobRow[]> {
   const resumeSessionId = options.resumeSessionId?.trim();
   const skipBatchDelay = Boolean(options.skipBatchPause);
   const rawKeywords = options.keywords?.length
@@ -52,7 +52,7 @@ export async function runVanguardSite(
 
   if (!resumeSessionId && !keywords.length) {
     console.warn("[vanguard] No keywords configured. Skipping run.");
-    return;
+    return [];
   }
 
   const runDateOverride = getRunDateOverride();
@@ -71,7 +71,7 @@ export async function runVanguardSite(
           site.host
         )}.`
       );
-      return;
+      return [];
     }
 
     outputPaths = located.outputPaths;
@@ -137,7 +137,7 @@ export async function runVanguardSite(
 
       if (!staged.size) {
         console.log("[vanguard] No new roles detected for this session.");
-        return;
+        return [];
       }
 
       stagedArray = Array.from(staged.values());
@@ -145,7 +145,7 @@ export async function runVanguardSite(
       console.log(
         `[vanguard] Session ${resumeSessionId} has no staged roles to evaluate.`
       );
-      return;
+      return [];
     }
 
     console.log(
@@ -187,7 +187,7 @@ export async function runVanguardSite(
       console.log("[vanguard] AI filtered out all titles for this session.");
       await writeSessionRoles(sessionPaths, filtered);
       await saveSeenStore(outputPaths.seenFile, seen);
-      return;
+      return [];
     }
 
     await writeSessionRoles(sessionPaths, filtered);
@@ -201,12 +201,13 @@ export async function runVanguardSite(
       context,
       filtered,
       seen,
-      site
+      site,
+      options.onJobAccepted
     );
     if (!acceptedRows.length) {
       console.log("[vanguard] No jobs approved after detail evaluation.");
       await saveSeenStore(outputPaths.seenFile, seen);
-      return;
+      return [];
     }
 
     await appendJobRows(outputPaths.csvFile, acceptedRows);
@@ -214,6 +215,7 @@ export async function runVanguardSite(
     console.log(
       `[vanguard] Accepted ${acceptedRows.length} roles. Output: ${outputPaths.csvFile}`
     );
+    return acceptedRows;
   } finally {
     await context.close();
   }
@@ -461,7 +463,8 @@ async function evaluateDetailedJobs(
   context: BrowserContext,
   roles: SessionRole[],
   seen: Set<string>,
-  site: SiteConfig
+  site: SiteConfig,
+  onJobAccepted?: (job: JobRow) => void
 ): Promise<JobRow[]> {
   const accepted: JobRow[] = [];
   for (let i = 0; i < roles.length; i++) {
@@ -519,6 +522,7 @@ async function evaluateDetailedJobs(
 
       seen.add(jobKey);
       accepted.push(role);
+      onJobAccepted?.(role);
     } catch (error) {
       console.error(
         `[vanguard] Failed to evaluate detail for ${role.url}`,

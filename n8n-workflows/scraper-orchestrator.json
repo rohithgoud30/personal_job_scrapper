@@ -1,0 +1,179 @@
+{
+  "name": "Scraper Orchestrator",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "workflow-trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3333/scrape",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ sites: $json.sites || undefined, date: $json.date || undefined }) }}"
+      },
+      "id": "start-scrape",
+      "name": "Start Scrape",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "wait-poll",
+      "name": "Wait 30s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'http://host.docker.internal:3333/scrape/' + $('Start Scrape').item.json.sessionId + '/status' }}",
+        "options": {}
+      },
+      "id": "check-status",
+      "name": "Check Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.state }}",
+              "rightValue": "running",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "still-running",
+      "name": "Still Running?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'http://host.docker.internal:3333/scrape/' + $('Start Scrape').item.json.sessionId + '/results' }}",
+        "options": {}
+      },
+      "id": "fetch-results",
+      "name": "Fetch Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1350, 400]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "jobs",
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "split-jobs",
+      "name": "Split Jobs",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [1570, 400]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ '**' + $json.title + '** | ' + $json.site + '\\n📍 ' + ($json.location || 'Location N/A') + '\\n📅 Posted: ' + ($json.posted || 'N/A') + '\\n\\n🔗 ' + $json.url }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "send-job-card",
+      "name": "Send Job Card",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1790, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ '✅ Scrape complete!\\n\\n📊 ' + $('Fetch Results').item.json.jobCount + ' jobs found.\\nSession: ' + $('Start Scrape').item.json.sessionId }}",
+        "additionalFields": {}
+      },
+      "id": "send-summary",
+      "name": "Send Summary",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2010, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [{ "node": "Start Scrape", "type": "main", "index": 0 }]
+      ]
+    },
+    "Start Scrape": {
+      "main": [
+        [{ "node": "Wait 30s", "type": "main", "index": 0 }]
+      ]
+    },
+    "Wait 30s": {
+      "main": [
+        [{ "node": "Check Status", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Status": {
+      "main": [
+        [{ "node": "Still Running?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Still Running?": {
+      "main": [
+        [{ "node": "Wait 30s", "type": "main", "index": 0 }],
+        [{ "node": "Fetch Results", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch Results": {
+      "main": [
+        [{ "node": "Split Jobs", "type": "main", "index": 0 }]
+      ]
+    },
+    "Split Jobs": {
+      "main": [
+        [{ "node": "Send Job Card", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send Job Card": {
+      "main": [
+        [{ "node": "Send Summary", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [{ "name": "scraper" }, { "name": "telegram" }],
+  "triggerCount": 0
+}

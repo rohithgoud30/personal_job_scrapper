@@ -98,3 +98,7 @@ function normalizeParsedRow(row: Record<string, string>): JobRow {
     scraped_at: row.scraped_at ?? row.scrapedAt ?? ''
   };
 }
+
+export async function readJobRows(filePath: string): Promise<JobRow[]> {
+  return readExistingRows(filePath);
+}

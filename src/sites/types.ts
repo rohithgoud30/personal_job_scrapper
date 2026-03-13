@@ -1,3 +1,5 @@
+import { JobRow } from "../lib/csv";
+
 export interface RunOptions {
   /**
    * When true, skip the polite sleep between keyword batches so AI filtering can start sooner.
@@ -11,4 +13,9 @@ export interface RunOptions {
    * Optional list of keywords to override config.
    */
   keywords?: string[];
+  /**
+   * Called each time a job passes detail evaluation and is accepted.
+   * Used by the HTTP server for live-mode SSE streaming.
+   */
+  onJobAccepted?: (job: JobRow) => void;
 }

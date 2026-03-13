@@ -1,0 +1,230 @@
+{
+  "name": "Telegram Command Router",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "id": "telegram-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = ($input.first().json.message?.text || '').trim();\nconst chatId = $input.first().json.message?.chat?.id;\n\nif (!text.startsWith('/')) {\n  return [{ json: { command: 'unknown', chatId } }];\n}\n\nconst parts = text.slice(1).split(/\\s+/);\nconst command = parts[0].toLowerCase();\nconst arg1 = parts[1] || '';\nconst arg2 = parts[2] || '';\n\nreturn [{ json: { command, arg1, arg2, chatId, rawText: text } }];"
+      },
+      "id": "parse-command",
+      "name": "Parse Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "outputKey": "start",
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "start",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "live",
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "live",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "stop",
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "stop",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "status",
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "status",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "switch-command",
+      "name": "Route Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3333/scrape",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ sites: $json.arg1 || undefined, date: $json.arg2 || undefined }) }}"
+      },
+      "id": "start-scrape",
+      "name": "Start Scrape",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 100]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Parse Command').item.json.chatId }}",
+        "text": "={{ '🔄 Scrape started!\\nSession: ' + $json.sessionId + '\\nSites: ' + ($json.sites || []).join(', ') + '\\n\\nI\\'ll send you the results when done.' }}",
+        "additionalFields": {}
+      },
+      "id": "ack-start",
+      "name": "Acknowledge Start",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1130, 100],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://host.docker.internal:3333/status",
+        "options": {}
+      },
+      "id": "get-status",
+      "name": "Get Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 500]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Parse Command').item.json.chatId }}",
+        "text": "={{ '📊 Status\\n\\nRunning sessions: ' + $json.running + '\\nTotal sessions: ' + $json.totalSessions + '\\nLast run: ' + ($json.lastRunTime || 'Never') + '\\nAvailable sites: ' + ($json.availableSites || []).join(', ') }}",
+        "additionalFields": {}
+      },
+      "id": "send-status",
+      "name": "Send Status",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1130, 500],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "🔴 Live mode disabled.",
+        "additionalFields": {}
+      },
+      "id": "ack-stop",
+      "name": "Acknowledge Stop",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [910, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "🟢 Live mode enabled! Jobs will be sent as they're found.",
+        "additionalFields": {}
+      },
+      "id": "ack-live",
+      "name": "Acknowledge Live",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [910, 250],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [{ "node": "Parse Command", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Command": {
+      "main": [
+        [{ "node": "Route Command", "type": "main", "index": 0 }]
+      ]
+    },
+    "Route Command": {
+      "main": [
+        [{ "node": "Start Scrape", "type": "main", "index": 0 }],
+        [{ "node": "Acknowledge Live", "type": "main", "index": 0 }],
+        [{ "node": "Acknowledge Stop", "type": "main", "index": 0 }],
+        [{ "node": "Get Status", "type": "main", "index": 0 }]
+      ]
+    },
+    "Start Scrape": {
+      "main": [
+        [{ "node": "Acknowledge Start", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get Status": {
+      "main": [
+        [{ "node": "Send Status", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [{ "name": "telegram" }, { "name": "job-scraper" }],
+  "triggerCount": 1
+}
