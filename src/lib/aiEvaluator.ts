@@ -72,15 +72,28 @@ async function callDeepinfra(
   const completion = await client.chat.completions.create({
     model,
     temperature: 0,
-    response_format: { type: "json_object" },
     messages: [
-      { role: "system", content: systemPrompt },
+      { role: "system", content: systemPrompt + "\n\nIMPORTANT: Respond with valid JSON only. No markdown, no code fences, no extra text." },
       { role: "user", content: userContent },
     ],
   });
   const message = completion.choices[0]?.message?.content ?? "{}";
   assertNotHtml(message);
-  return message;
+  return extractJson(message);
+}
+
+function extractJson(text: string): string {
+  const trimmed = text.trim();
+  // If it's already valid JSON, return as-is
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    return trimmed;
+  }
+  // Extract from markdown code fence
+  const fenceMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (fenceMatch) {
+    return fenceMatch[1].trim();
+  }
+  return trimmed;
 }
 
 async function callGemini(
