@@ -54,6 +54,9 @@ function getGeminiClient(): GoogleGenAI {
 
 /* ── Provider calls ── */
 
+const DEEPINFRA_JSON_SUFFIX =
+  "\n\nIMPORTANT: Respond with valid JSON only. No markdown, no code fences, no extra text.";
+
 function assertNotHtml(text: string): void {
   const trimmed = text.trim();
   if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html")) {
@@ -73,7 +76,7 @@ async function callDeepinfra(
     model,
     temperature: 0,
     messages: [
-      { role: "system", content: systemPrompt + "\n\nIMPORTANT: Respond with valid JSON only. No markdown, no code fences, no extra text." },
+      { role: "system", content: systemPrompt },
       { role: "user", content: userContent },
     ],
   });
@@ -84,7 +87,7 @@ async function callDeepinfra(
 
 function extractJson(text: string): string {
   const trimmed = text.trim();
-  // If it's already valid JSON, return as-is
+  // Already starts with JSON
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
     return trimmed;
   }
@@ -92,6 +95,11 @@ function extractJson(text: string): string {
   const fenceMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
   if (fenceMatch) {
     return fenceMatch[1].trim();
+  }
+  // Find first { or [ in text (handles leading prose)
+  const jsonStart = trimmed.search(/[{[]/);
+  if (jsonStart !== -1) {
+    return trimmed.slice(jsonStart);
   }
   return trimmed;
 }
@@ -149,7 +157,7 @@ function callByProvider(
 ): Promise<string> {
   const models = getModels();
   if (provider === "deepinfra") {
-    return callDeepinfra(models.deepinfra, systemPrompt, userContent);
+    return callDeepinfra(models.deepinfra, systemPrompt + DEEPINFRA_JSON_SUFFIX, userContent);
   }
   return callGemini(models.gemini, systemPrompt, userContent);
 }
@@ -182,6 +190,12 @@ async function callWithRetry<T>(
       const responseText = await callByProvider(provider, systemPrompt, userContent);
       return parseResponse(responseText);
     } catch (error) {
+      // Don't retry parse/schema errors — the response was received but malformed
+      if (error instanceof SyntaxError) {
+        console.warn(`[AI] ${label} attempt ${attempt}/${providers.length} failed with parse error:`, error.message);
+        throw error;
+      }
+
       const errorMsg = error instanceof Error ? error.message : String(error);
       const isRateLimitOrHtml =
         errorMsg.includes("HTML instead of JSON") ||
@@ -213,13 +227,14 @@ function normalizePrompt(prompts: string | string[]): string {
 async function runWithConcurrency<T>(
   items: T[],
   concurrency: number,
-  fn: (item: T) => Promise<void>
+  fn: (item: T, index: number) => Promise<void>
 ): Promise<void> {
-  let index = 0;
+  let next = 0;
+  // Safe: index++ is synchronous before each await, so no race in Node's single-threaded loop
   async function worker(): Promise<void> {
-    while (index < items.length) {
-      const i = index++;
-      await fn(items[i]);
+    while (next < items.length) {
+      const i = next++;
+      await fn(items[i], i);
     }
   }
   const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
@@ -264,10 +279,9 @@ export async function findIrrelevantJobIds(
 
   const CONCURRENCY = 3;
 
-  await runWithConcurrency(batches, CONCURRENCY, async (batch) => {
-    const batchIndex = batches.indexOf(batch) + 1;
-    const userContent = JSON.stringify(batch, null, 2);
-    const label = `Title batch ${batchIndex}/${totalBatches}`;
+  await runWithConcurrency(batches, CONCURRENCY, async (batch, batchIdx) => {
+    const userContent = JSON.stringify(batch);
+    const label = `Title batch ${batchIdx + 1}/${totalBatches}`;
 
     console.log(`[AI] Processing ${label} (${batch.length} items)...`);
 
