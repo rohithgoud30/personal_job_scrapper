@@ -3,13 +3,15 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const env = {
+  // DeepInfra provider
   aiApiKey: process.env.AI_API_KEY ?? "",
   aiBaseUrl: process.env.AI_BASE_URL ?? "",
-  aiProvider: (process.env.AI_PROVIDER ?? "").toLowerCase(),
-  aiTitleFilterModel: process.env.AI_TITLE_FILTER_MODEL ?? "",
-  aiDetailEvalModel: process.env.AI_DETAIL_EVAL_MODEL ?? "",
-  fallbackAiDetailEvalModel: process.env.FALLBACK_AI_DETAIL_EVAL_MODEL ?? "",
+  aiModel: process.env.AI_MODEL ?? "",
+  // Fallback provider (gemini)
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  geminiModel: process.env.GEMINI_MODEL ?? "",
+  // Provider mode: "deepinfra" (default), "gemini", or "both"
+  aiDefaultProvider: (process.env.AI_DEFAULT_PROVIDER ?? "deepinfra").toLowerCase(),
   titleBatchSize: Number(process.env.TITLE_BATCH_SIZE ?? "0") || 0,
   keywordBatchSize: Number(process.env.KEYWORD_BATCH_SIZE ?? "0") || 0,
   aiRetryDelayMs: Number(process.env.AI_RETRY_DELAY_MS ?? "0") || 0,
@@ -20,11 +22,9 @@ export function requireEnv(
   name:
     | "aiApiKey"
     | "aiBaseUrl"
-    | "aiProvider"
-    | "aiTitleFilterModel"
-    | "aiDetailEvalModel"
-    | "fallbackAiDetailEvalModel"
+    | "aiModel"
     | "geminiApiKey"
+    | "geminiModel"
 ): string {
   const value = env[name];
   if (!value) {

@@ -26,8 +26,8 @@ pnpm start -- --site=corptocorp
 - **Node.js** v18 or higher
 - **pnpm** (install via `corepack enable` or `npm i -g pnpm`)
 - **Git**
-- **AI API Key** (OpenAI, Google Gemini, Zhipu AI, or any OpenAI-compatible provider)
-- **Gemini API Key** (if using Gemini models)
+- **DeepInfra API Key** (for NVIDIA models via DeepInfra)
+- **Gemini API Key** (if using Gemini as provider or fallback)
 
 ## ⚙️ Configuration
 
@@ -44,51 +44,47 @@ cp .env.example .env
 Edit `.env` with **all required** settings:
 
 ```env
-# Required: AI API Configuration
-AI_API_KEY=your-api-key-here
-AI_BASE_URL=your-api-base-url-here
+# DeepInfra provider (OpenAI-compatible)
+AI_API_KEY=your-deepinfra-api-key
+AI_BASE_URL=https://api.deepinfra.com/v1/openai
+AI_MODEL=nvidia/NVIDIA-Nemotron-3-Super-120B-A12B
 
-# Required: AI Model Configuration
-AI_TITLE_FILTER_MODEL=your-title-filter-model-here
-AI_DETAIL_EVAL_MODEL=your-detail-eval-model-here
-FALLBACK_AI_DETAIL_EVAL_MODEL=your-fallback-model-here
-
-# Required: Gemini API Configuration
+# Gemini provider
 GEMINI_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-2.5-flash
 
-# Required: AI Provider (gemini or openai)
-AI_PROVIDER=gemini
+# Provider mode: "deepinfra", "gemini", or "both" (deepinfra primary, gemini fallback)
+AI_DEFAULT_PROVIDER=both
 
-# Required: Batch Size Configuration
+# Batch Size Configuration
 TITLE_BATCH_SIZE=50
 KEYWORD_BATCH_SIZE=5
 
-# Required: AI Retry Configuration (milliseconds)
+# AI Retry Configuration (milliseconds)
 AI_RETRY_DELAY_MS=5000
 
 # Optional: Testing Override
 TEST_RUN_DATE=
 ```
 
-| Variable                        | Description                           | Required |
-| ------------------------------- | ------------------------------------- | -------- |
-| `AI_API_KEY`                    | API key for your AI provider          | ✅ Yes   |
-| `AI_BASE_URL`                   | API endpoint URL                      | ✅ Yes   |
-| `AI_TITLE_FILTER_MODEL`         | Model for Stage 1 (title filtering)   | ✅ Yes   |
-| `AI_DETAIL_EVAL_MODEL`          | Model for Stage 2 (detail evaluation) | ✅ Yes   |
-| `FALLBACK_AI_DETAIL_EVAL_MODEL` | Fallback model for Stage 2            | ✅ Yes   |
-| `GEMINI_API_KEY`                | API key for Gemini models             | ✅ Yes   |
-| `AI_PROVIDER`                   | AI provider: `gemini` or `openai`     | ✅ Yes   |
-| `TITLE_BATCH_SIZE`              | Jobs per AI title filter batch        | ✅ Yes   |
-| `KEYWORD_BATCH_SIZE`            | Parallel keyword searches             | ✅ Yes   |
-| `AI_RETRY_DELAY_MS`             | Retry delay in milliseconds           | ✅ Yes   |
-| `TEST_RUN_DATE`                 | Backfill date (YYYY-MM-DD)            | ❌ No    |
+| Variable              | Description                                                     | Required |
+| --------------------- | --------------------------------------------------------------- | -------- |
+| `AI_API_KEY`          | DeepInfra API key                                               | ✅ Yes   |
+| `AI_BASE_URL`         | DeepInfra endpoint URL                                          | ✅ Yes   |
+| `AI_MODEL`            | NVIDIA model name                                               | ✅ Yes   |
+| `GEMINI_API_KEY`      | Gemini API key                                                  | ✅ Yes   |
+| `GEMINI_MODEL`        | Gemini model name                                               | ✅ Yes   |
+| `AI_DEFAULT_PROVIDER` | `deepinfra`, `gemini`, or `both` (deepinfra primary + fallback) | ✅ Yes   |
+| `TITLE_BATCH_SIZE`    | Jobs per AI title filter batch                                  | ✅ Yes   |
+| `KEYWORD_BATCH_SIZE`  | Parallel keyword searches                                       | ✅ Yes   |
+| `AI_RETRY_DELAY_MS`   | Retry delay in milliseconds                                     | ✅ Yes   |
+| `TEST_RUN_DATE`       | Backfill date (YYYY-MM-DD)                                      | ❌ No    |
 
 > [!IMPORTANT]
 > If any required variable is missing, the app will throw a clear error:
 >
 > ```
-> Error: Environment variable aiDetailEvalModel is required but not set. Please add it to your .env file.
+> Error: Environment variable aiModel is required but not set. Please add it to your .env file.
 > ```
 
 ---
@@ -283,15 +279,15 @@ TEST_RUN_DATE=2025-11-14 pnpm start -- --site=kforce
 
 ### AI Filtering Rules
 
-**Stage 1: Title Filter** (Model: configured via `AI_TITLE_FILTER_MODEL`)
+**Stage 1: Title Filter** (uses configured provider via `AI_DEFAULT_PROVIDER`)
 
 - Removes: Data Engineer, BI/Analytics, QA/SDET, .NET, C#, Go, Legacy Tech
 - Keeps: Modern web/full-stack roles
 - Customize rules in `config.json` → `ai.prompts.titleFilter`
 
-**Stage 2: Detail Evaluation** (Primary: `AI_DETAIL_EVAL_MODEL`, Fallback: `FALLBACK_AI_DETAIL_EVAL_MODEL`)
+**Stage 2: Detail Evaluation** (uses configured provider, with fallback when set to `both`)
 
-- **Fallback Logic**: Automatically switches to fallback model if primary fails (e.g., token limits, timeouts).
+- **Fallback Logic**: When `AI_DEFAULT_PROVIDER=both`, automatically falls back from DeepInfra to Gemini on failure.
 - Customize rules in `config.json` → `ai.prompts.detailEvaluation`
 
 - ✅ **Tech Stack**: React, Angular, Next.js, Node.js, Java/Spring Boot, Python/FastAPI

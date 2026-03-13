@@ -30,27 +30,29 @@ export interface TitleFilterResult {
   reasons: Map<string, string>;
 }
 
-let openAiClient: OpenAI | null = null;
+/* ── Clients (lazy singletons) ── */
+
+let deepinfraClient: OpenAI | null = null;
 let geminiClient: GoogleGenAI | null = null;
 
-function getOpenAiClient(): OpenAI {
-  if (!openAiClient) {
-    const apiKey = requireEnv("aiApiKey");
-    openAiClient = new OpenAI({
-      apiKey,
-      baseURL: env.aiBaseUrl,
+function getDeepinfraClient(): OpenAI {
+  if (!deepinfraClient) {
+    deepinfraClient = new OpenAI({
+      apiKey: requireEnv("aiApiKey"),
+      baseURL: requireEnv("aiBaseUrl"),
     });
   }
-  return openAiClient;
+  return deepinfraClient;
 }
 
 function getGeminiClient(): GoogleGenAI {
   if (!geminiClient) {
-    const apiKey = requireEnv("geminiApiKey");
-    geminiClient = new GoogleGenAI({ apiKey });
+    geminiClient = new GoogleGenAI({ apiKey: requireEnv("geminiApiKey") });
   }
   return geminiClient;
 }
+
+/* ── Provider calls ── */
 
 function assertNotHtml(text: string): void {
   const trimmed = text.trim();
@@ -59,6 +61,26 @@ function assertNotHtml(text: string): void {
       `API returned HTML instead of JSON (likely rate-limited or blocked). Response preview: ${text.slice(0, 100)}...`
     );
   }
+}
+
+async function callDeepinfra(
+  model: string,
+  systemPrompt: string,
+  userContent: string
+): Promise<string> {
+  const client = getDeepinfraClient();
+  const completion = await client.chat.completions.create({
+    model,
+    temperature: 0,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userContent },
+    ],
+  });
+  const message = completion.choices[0]?.message?.content ?? "{}";
+  assertNotHtml(message);
+  return message;
 }
 
 async function callGemini(
@@ -81,44 +103,117 @@ async function callGemini(
   return responseText;
 }
 
-async function callOpenAi(
-  model: string,
-  systemPrompt: string,
-  userContent: string
-): Promise<string> {
-  const client = getOpenAiClient();
-  const completion = await client.chat.completions.create({
-    model,
-    temperature: 0,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userContent },
-    ],
-  });
-  const message = completion.choices[0]?.message?.content ?? "{}";
-  assertNotHtml(message);
-  return message;
+/* ── Provider routing ── */
+
+type Provider = "deepinfra" | "gemini";
+
+function getProvider(): "deepinfra" | "gemini" | "both" {
+  const p = env.aiDefaultProvider;
+  if (p === "gemini" || p === "both") return p;
+  return "deepinfra";
 }
 
-function isGeminiProvider(): boolean {
-  return requireEnv("aiProvider") === "gemini";
-}
+// Cached model names — resolved once on first use
+let cachedModels: { deepinfra: string; gemini: string } | null = null;
 
-async function callAi(
-  model: string,
-  systemPrompt: string,
-  userContent: string
-): Promise<string> {
-  if (isGeminiProvider()) {
-    return callGemini(model, systemPrompt, userContent);
+function getModels(): { deepinfra: string; gemini: string } {
+  if (!cachedModels) {
+    const mode = getProvider();
+    cachedModels = {
+      deepinfra:
+        mode !== "gemini" ? requireEnv("aiModel") : "",
+      gemini:
+        mode !== "deepinfra" ? requireEnv("geminiModel") : "",
+    };
   }
-  return callOpenAi(model, systemPrompt, userContent);
+  return cachedModels;
 }
+
+function callByProvider(
+  provider: Provider,
+  systemPrompt: string,
+  userContent: string
+): Promise<string> {
+  const models = getModels();
+  if (provider === "deepinfra") {
+    return callDeepinfra(models.deepinfra, systemPrompt, userContent);
+  }
+  return callGemini(models.gemini, systemPrompt, userContent);
+}
+
+function getProviderSequence(retries: number): Provider[] {
+  const mode = getProvider();
+  if (mode === "both") {
+    return ["deepinfra", ...Array<Provider>(retries - 1).fill("gemini")];
+  }
+  return Array<Provider>(retries).fill(mode);
+}
+
+/* ── Shared retry helper ── */
+
+async function callWithRetry<T>(
+  providers: Provider[],
+  systemPrompt: string,
+  userContent: string,
+  parseResponse: (raw: string) => T,
+  label: string
+): Promise<T> {
+  const retryDelay = requireNumericEnv("aiRetryDelayMs");
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= providers.length; attempt++) {
+    try {
+      const provider = providers[attempt - 1];
+      console.log(`[AI] ${label} attempt ${attempt}/${providers.length}: Using ${provider}...`);
+
+      const responseText = await callByProvider(provider, systemPrompt, userContent);
+      return parseResponse(responseText);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const isRateLimitOrHtml =
+        errorMsg.includes("HTML instead of JSON") ||
+        errorMsg.includes("rate") ||
+        errorMsg.includes("429") ||
+        errorMsg.includes("<!DOCTYPE");
+
+      console.warn(
+        `[AI] ${label} attempt ${attempt}/${providers.length} failed:`,
+        isRateLimitOrHtml ? errorMsg : error
+      );
+      lastError = error;
+
+      if (attempt < providers.length) {
+        await sleep((attempt * retryDelay) / 1000);
+      }
+    }
+  }
+
+  throw lastError ?? new Error(`${label} failed after ${providers.length} attempts.`);
+}
+
+/* ── Helpers ── */
 
 function normalizePrompt(prompts: string | string[]): string {
   return Array.isArray(prompts) ? prompts.join(" ") : prompts;
 }
+
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<void>
+): Promise<void> {
+  let index = 0;
+  async function worker(): Promise<void> {
+    while (index < items.length) {
+      const i = index++;
+      await fn(items[i]);
+    }
+  }
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  await Promise.all(workers);
+}
+
+/* ── Title filter ── */
 
 export async function findIrrelevantJobIds(
   entries: TitleEntry[]
@@ -143,62 +238,42 @@ export async function findIrrelevantJobIds(
   console.log("[AI] Loaded title filter prompt from config.");
 
   const systemPrompt = normalizePrompt(prompts);
+  const providers = getProviderSequence(2);
+
+  // Build batches
+  const batches: TitleEntry[][] = [];
+  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+    batches.push(entries.slice(i, i + BATCH_SIZE));
+  }
 
   let failedBatches = 0;
+  const totalBatches = batches.length;
 
-  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-    const batch = entries.slice(i, i + BATCH_SIZE);
+  const CONCURRENCY = 3;
+
+  await runWithConcurrency(batches, CONCURRENCY, async (batch) => {
+    const batchIndex = batches.indexOf(batch) + 1;
     const userContent = JSON.stringify(batch, null, 2);
-    let batchSuccess = false;
+    const label = `Title batch ${batchIndex}/${totalBatches}`;
 
-    console.log(
-      `[AI] Processing title batch ${
-        Math.floor(i / BATCH_SIZE) + 1
-      }/${Math.ceil(entries.length / BATCH_SIZE)} (${batch.length} items)...`
-    );
+    console.log(`[AI] Processing ${label} (${batch.length} items)...`);
 
-    // 2 attempts: first with primary model, then fallback
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        const modelToUse =
-          attempt === 1
-            ? requireEnv("aiTitleFilterModel")
-            : requireEnv("fallbackAiDetailEvalModel");
-
-        console.log(`[AI] Attempt ${attempt}/2: Using model ${modelToUse}...`);
-
-        const responseText = await callAi(modelToUse, systemPrompt, userContent);
-        const parsed: AiIrrelevantResponse = JSON.parse(responseText);
-        processTitleResponse(parsed, combinedRemovalSet, combinedReasons);
-
-        batchSuccess = true;
-        break;
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        const isRateLimitOrHtml =
-          errorMsg.includes("HTML instead of JSON") ||
-          errorMsg.includes("rate") ||
-          errorMsg.includes("429") ||
-          errorMsg.includes("<!DOCTYPE");
-
-        console.warn(
-          `[AI] Attempt ${attempt}/2 for title batch failed:`,
-          isRateLimitOrHtml ? errorMsg : error
-        );
-
-        if (attempt < 2) {
-          await sleepBackoff(attempt);
-        }
-      }
-    }
-
-    if (!batchSuccess) {
+    try {
+      const parsed = await callWithRetry<AiIrrelevantResponse>(
+        providers,
+        systemPrompt,
+        userContent,
+        (raw) => JSON.parse(raw),
+        label
+      );
+      processTitleResponse(parsed, combinedRemovalSet, combinedReasons);
+    } catch {
       failedBatches++;
       console.warn(
-        `[AI] Failed to process title batch ${Math.floor(i / BATCH_SIZE) + 1} after 2 attempts. Moving to next batch. (${batch.length} jobs will pass through without AI filtering)`
+        `[AI] Failed ${label} after ${providers.length} attempts. (${batch.length} jobs will pass through without AI filtering)`
       );
     }
-  }
+  });
 
   if (failedBatches > 0) {
     console.warn(
@@ -208,6 +283,8 @@ export async function findIrrelevantJobIds(
 
   return { removalSet: combinedRemovalSet, reasons: combinedReasons };
 }
+
+/* ── Detail evaluation ── */
 
 export async function evaluateJobDetail(
   payload: DetailPayload,
@@ -227,47 +304,24 @@ export async function evaluateJobDetail(
   console.log("[AI] Loaded detail evaluation prompt from config.");
 
   const systemPrompt = normalizePrompt(prompts);
-
-  const modelName = requireEnv("aiDetailEvalModel");
-
   const userContent = `Title: ${payload.title}\nCompany: ${payload.company}\nLocation: ${payload.location}\nURL: ${payload.url}\nDescription:\n${payload.description}`;
 
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const useFallback = attempt >= 2;
-
-      let responseText: string;
-      if (useFallback) {
-        const fallbackModel = requireEnv("fallbackAiDetailEvalModel");
-        console.log(
-          `[AI] Attempt ${attempt}: Using fallback model ${fallbackModel}...`
-        );
-        responseText = await callOpenAi(fallbackModel, systemPrompt, userContent);
-      } else {
-        console.log(
-          `[AI] Attempt ${attempt}: Using primary model ${modelName}...`
-        );
-        responseText = await callAi(modelName, systemPrompt, userContent);
-      }
-
-      const parsed = JSON.parse(responseText);
+  return callWithRetry(
+    getProviderSequence(3),
+    systemPrompt,
+    userContent,
+    (raw) => {
+      const parsed = JSON.parse(raw);
       return {
         accepted: Boolean(parsed.accepted),
-        reasoning:
-          typeof parsed.reasoning === "string" ? parsed.reasoning : "",
+        reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : "",
       };
-    } catch (error) {
-      console.warn(`[AI] Attempt ${attempt} failed:`, error);
-      lastError = error;
-      if (attempt < 3) {
-        await sleepBackoff(attempt);
-      }
-    }
-  }
-
-  throw lastError ?? new Error("Detail AI evaluation failed after retries.");
+    },
+    "Detail eval"
+  );
 }
+
+/* ── Internal helpers ── */
 
 function processTitleResponse(
   parsed: AiIrrelevantResponse,
@@ -294,9 +348,4 @@ function processTitleResponse(
       }
     }
   }
-}
-
-function sleepBackoff(attempt: number): Promise<void> {
-  const baseDelay = requireNumericEnv("aiRetryDelayMs");
-  return sleep((attempt * baseDelay) / 1000);
 }

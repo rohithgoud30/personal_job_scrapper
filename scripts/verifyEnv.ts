@@ -1,15 +1,17 @@
 import { env } from "../src/lib/env";
 
 console.log("Verifying Environment Variables:");
-console.log(`AI_DETAIL_EVAL_MODEL: ${env.aiDetailEvalModel}`);
-console.log(`FALLBACK_AI_DETAIL_EVAL_MODEL: ${env.fallbackAiDetailEvalModel}`);
+console.log(`AI_MODEL: ${env.aiModel}`);
+console.log(`AI_BASE_URL: ${env.aiBaseUrl}`);
+console.log(`GEMINI_MODEL: ${env.geminiModel}`);
+console.log(`AI_DEFAULT_PROVIDER: ${env.aiDefaultProvider}`);
 
-if (env.fallbackAiDetailEvalModel === "glm-4.5-Air") {
-  console.log("SUCCESS: Fallback model is correctly loaded.");
-} else {
-  console.error(`FAILURE: Fallback model verification failed.`);
+const validProviders = ["deepinfra", "gemini", "both"];
+if (!validProviders.includes(env.aiDefaultProvider)) {
   console.error(
-    `Expected FALLBACK: 'glm-4.5-Air', Got: '${env.fallbackAiDetailEvalModel}'`
+    `FAILURE: AI_DEFAULT_PROVIDER must be one of: ${validProviders.join(", ")}. Got: '${env.aiDefaultProvider}'`
   );
   process.exit(1);
 }
+
+console.log("SUCCESS: Environment variables are correctly loaded.");
