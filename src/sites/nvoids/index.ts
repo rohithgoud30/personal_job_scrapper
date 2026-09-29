@@ -36,7 +36,6 @@ export async function runNvoidsSite(
   options: RunOptions = {},
 ): Promise<void> {
   const resumeSessionId = options.resumeSessionId?.trim();
-  const skipBatchDelay = Boolean(options.skipBatchPause);
   const keywords = normalizeKeywords(site.search.criteria.searchKeywords);
 
   if (!resumeSessionId && !keywords.length) {
@@ -116,7 +115,6 @@ export async function runNvoidsSite(
         sessionPaths.sessionId,
         runDate,
         isBackfill,
-        skipBatchDelay,
       );
 
       if (!staged.size) {
@@ -190,6 +188,11 @@ export async function runNvoidsSite(
   }
 }
 
+const SEARCH_TIMEOUT_MS = 15000;
+const SEARCH_ATTEMPTS = 3;
+// Stalls mean nvoids' search backend is overloaded; give it time to drain.
+const SEARCH_BACKOFF_SECONDS = 20;
+
 async function scrapeKeywordsInBatches(
   context: BrowserContext,
   site: SiteConfig,
@@ -199,12 +202,9 @@ async function scrapeKeywordsInBatches(
   sessionId: string,
   runDate: Date,
   isBackfill: boolean,
-  skipBatchDelay: boolean,
 ): Promise<void> {
-  const batchSize = env.keywordBatchSize;
-  if (skipBatchDelay) {
-    console.log("[nvoids] Batch wait disabled; running keyword batches back-to-back.");
-  }
+  // nvoids' search backend stalls when searches overlap, so it can cap concurrency.
+  const batchSize = site.run.maxConcurrentSearches ?? env.keywordBatchSize;
 
   for (let i = 0; i < keywords.length; i += batchSize) {
     const batch = keywords.slice(i, i + batchSize);
@@ -222,15 +222,6 @@ async function scrapeKeywordsInBatches(
         ),
       ),
     );
-
-    const hasMoreBatches = i + batchSize < keywords.length;
-    if (!isBackfill && hasMoreBatches && !skipBatchDelay) {
-      const delay = site.run.keywordDelaySeconds ?? 0;
-      if (delay > 0) {
-        console.log(`[nvoids] Sleeping ${delay}s before next keyword batch.`);
-        await sleep(delay);
-      }
-    }
   }
 }
 
@@ -248,8 +239,20 @@ async function scrapeKeywordInNewPage(
   await blockAds(page);
   try {
     console.log(`[nvoids][${keyword}] Searching for keyword "${keyword}"`);
-    await prepareSearchPage(page, site, keyword);
-    const rows = await scrapeKeyword(page, site, keyword, runDate, isBackfill);
+    let rows: JobRow[] = [];
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await prepareSearchPage(page, site, keyword);
+        rows = await scrapeKeyword(page, site, keyword, runDate, isBackfill);
+        break;
+      } catch (error) {
+        if (attempt >= SEARCH_ATTEMPTS) throw error;
+        // Rate-limit backoff: only paid when a search actually stalls.
+        const backoff = attempt * SEARCH_BACKOFF_SECONDS;
+        console.warn(`[nvoids][${keyword}] Search stalled (attempt ${attempt}); retrying in ${backoff}s.`);
+        await sleep(backoff);
+      }
+    }
     let added = 0;
     for (const row of rows) {
       const jobKey = computeJobKey(row);
@@ -273,7 +276,10 @@ async function scrapeKeywordInNewPage(
 
 async function prepareSearchPage(page: Page, site: SiteConfig, keyword: string): Promise<void> {
   await page.goto(site.search.url, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(1000);
+  await page
+    .locator(site.search.selectors.keywords)
+    .waitFor({ state: "attached", timeout: 10000 })
+    .catch(() => {});
 }
 
 async function scrapeKeyword(
@@ -292,8 +298,13 @@ async function scrapeKeyword(
   }
 
   await searchInput.fill(keyword);
-  await submitButton.click();
-  await page.waitForTimeout(2000);
+  const urlBeforeSearch = page.url();
+  await submitButton.click({ noWaitAfter: true });
+  // The form always posts to a results page; if it never loads, nvoids is throttling us.
+  await page.waitForURL((url) => url.href !== urlBeforeSearch, {
+    waitUntil: "domcontentloaded",
+    timeout: SEARCH_TIMEOUT_MS,
+  });
 
   return collectListingRows(page, site, keyword, runDate, isBackfill);
 }
@@ -356,8 +367,14 @@ async function collectListingRows(
       const nextBtn = nextBtns.first();
       // We can check visibility on the first element safely
       if (await nextBtn.isVisible()) {
+        const urlBeforeNext = page.url();
         await nextBtn.click();
-        await page.waitForTimeout(2000);
+        await page
+          .waitForURL((url) => url.href !== urlBeforeNext, {
+            waitUntil: "domcontentloaded",
+            timeout: 10000,
+          })
+          .catch(() => {});
         pageIndex++;
       } else {
         console.log(

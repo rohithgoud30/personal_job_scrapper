@@ -15,7 +15,6 @@ import {
 import { findSessionById, parseDateFolderLabel, readSessionCsv } from "../../lib/session";
 import { getEasternDateLabel, getEasternTimeLabel } from "../../lib/time";
 import { env, getRunDateOverride } from "../../lib/env";
-import { sleep } from "../../lib/throttle";
 import {
   evaluateJobDetail,
   findIrrelevantJobIds,
@@ -36,7 +35,6 @@ export async function runDiceSite(
   options: RunOptions = {},
 ): Promise<void> {
   const resumeSessionId = options.resumeSessionId?.trim();
-  const skipBatchDelay = Boolean(options.skipBatchPause);
   const rawKeywords = options.keywords?.length
     ? options.keywords
     : site.search.criteria.searchKeywords;
@@ -119,7 +117,6 @@ export async function runDiceSite(
         sessionPaths.sessionId,
         runDate,
         isBackfill,
-        skipBatchDelay,
       );
 
       if (!staged.size) {
@@ -202,12 +199,8 @@ async function scrapeKeywordsInBatches(
   sessionId: string,
   runDate: Date,
   isBackfill: boolean,
-  skipBatchDelay: boolean,
 ): Promise<void> {
   const batchSize = env.keywordBatchSize;
-  if (skipBatchDelay) {
-    console.log("[dice] Batch wait disabled; running keyword batches back-to-back.");
-  }
 
   for (let i = 0; i < keywords.length; i += batchSize) {
     const batch = keywords.slice(i, i + batchSize);
@@ -225,12 +218,6 @@ async function scrapeKeywordsInBatches(
         ),
       ),
     );
-
-    const hasMoreBatches = i + batchSize < keywords.length;
-    if (!isBackfill && hasMoreBatches && !skipBatchDelay) {
-      console.log("[dice] Sleeping 30s before next keyword batch (robots crawl-delay).");
-      await sleep(30);
-    }
   }
 }
 
@@ -287,14 +274,14 @@ async function prepareSearchPage(page: Page, site: SiteConfig, keyword: string):
   }
 
   await keywordInput.fill("");
-  await keywordInput.type(keyword, { delay: 20 });
+  await keywordInput.type(keyword);
 
   const submitButton = page.locator(selectors.submit).first();
   if ((await submitButton.count()) === 0) {
     throw new Error(`Submit button not found using selector ${selectors.submit}`);
   }
 
-  await submitButton.click({ delay: 50 });
+  await submitButton.click();
   await page.waitForLoadState("networkidle").catch(() => undefined);
 
   // Apply filters
@@ -302,7 +289,13 @@ async function prepareSearchPage(page: Page, site: SiteConfig, keyword: string):
     const allFiltersBtn = page.locator(selectors.allFilters).first();
     if (await allFiltersBtn.isVisible()) {
       await allFiltersBtn.click();
-      await page.waitForTimeout(3000); // Wait for drawer/modal
+      // Wait for the drawer's filter options to render
+      await page
+        .locator("label")
+        .filter({ hasText: /Today|Contract/ })
+        .first()
+        .waitFor({ state: "visible", timeout: 5000 })
+        .catch(() => undefined);
 
       // Posted Date: Today
       if (selectors.postedDateRadio) {
@@ -322,7 +315,13 @@ async function prepareSearchPage(page: Page, site: SiteConfig, keyword: string):
           await todayLabel.scrollIntoViewIfNeeded();
           await todayLabel.click({ force: true });
           console.log(`[dice][${keyword}] Clicked 'Today' filter.`);
-          await page.waitForTimeout(500);
+          await page
+            .waitForFunction(
+              (sel) => (document.querySelector(sel) as HTMLInputElement | null)?.checked === true,
+              selectors.postedDateRadio,
+              { timeout: 2000 },
+            )
+            .catch(() => undefined);
         } else {
           console.warn(`[dice][${keyword}] 'Today' filter label not visible.`);
         }
@@ -330,8 +329,8 @@ async function prepareSearchPage(page: Page, site: SiteConfig, keyword: string):
 
       // Employment Type: Contract
       if (selectors.employmentTypeCheckbox) {
-        await page.waitForTimeout(1000);
         const contractLabel = page.locator("label").filter({ hasText: "Contract" }).first();
+        await contractLabel.waitFor({ state: "visible", timeout: 5000 }).catch(() => undefined);
 
         if (await contractLabel.isVisible()) {
           const labelText = await contractLabel.innerText();
@@ -359,14 +358,23 @@ async function prepareSearchPage(page: Page, site: SiteConfig, keyword: string):
 
       // Apply
       if (selectors.applyFilters) {
-        await page.waitForTimeout(2000); // Ensure previous clicks are registered
+        // Ensure previous clicks are registered
+        if (selectors.employmentTypeCheckbox) {
+          await page
+            .waitForFunction(
+              (sel) => (document.querySelector(sel) as HTMLInputElement | null)?.checked === true,
+              selectors.employmentTypeCheckbox,
+              { timeout: 2000 },
+            )
+            .catch(() => undefined);
+        }
         const applyBtn = page.locator(selectors.applyFilters).first();
         // Ensure drawer is open
         if (!(await applyBtn.isVisible())) {
           console.log(`[dice][${keyword}] Apply button not visible. Re-opening drawer...`);
           const allFiltersBtn = page.locator(selectors.allFilters).first();
           await allFiltersBtn.click();
-          await page.waitForTimeout(2000);
+          await applyBtn.waitFor({ state: "visible", timeout: 5000 }).catch(() => undefined);
         }
 
         await applyBtn.scrollIntoViewIfNeeded();
@@ -374,16 +382,13 @@ async function prepareSearchPage(page: Page, site: SiteConfig, keyword: string):
         await applyBtn.evaluate((el) => (el as HTMLElement).click());
 
         // Wait for URL to update with filters
-        // Wait for URL to update with filters
+        const hasFilters = (url: URL) => {
+          const s = url.toString();
+          // Check for presence of filters, allow CONTRACTS (plural)
+          return s.includes("filters.postedDate=ONE") && s.includes("filters.employmentType");
+        };
         try {
-          await page.waitForURL(
-            (url) => {
-              const s = url.toString();
-              // Check for presence of filters, allow CONTRACTS (plural)
-              return s.includes("filters.postedDate=ONE") && s.includes("filters.employmentType");
-            },
-            { timeout: 30000 },
-          );
+          await page.waitForURL(hasFilters, { timeout: 30000 });
           console.log(`[dice][${keyword}] Filters applied successfully (verified via URL).`);
         } catch (e) {
           console.warn(
@@ -395,7 +400,7 @@ async function prepareSearchPage(page: Page, site: SiteConfig, keyword: string):
             try {
               await applyBtn.scrollIntoViewIfNeeded();
               await applyBtn.evaluate((el) => (el as HTMLElement).click());
-              await page.waitForTimeout(2000);
+              await page.waitForURL(hasFilters, { timeout: 5000 }).catch(() => undefined);
             } catch (retryErr) {
               console.warn(`[dice][${keyword}] Retry click failed:`, retryErr);
             }
@@ -562,9 +567,24 @@ async function collectListingRows(
       const nextButton = page.locator(selectors.next).first();
       // Check if visible and enabled
       if (await nextButton.isVisible()) {
+        const prevFirstCard = await page
+          .locator(selectors.card)
+          .first()
+          .innerText()
+          .catch(() => "");
         await nextButton.click();
         await page.waitForLoadState("networkidle").catch(() => undefined);
-        await page.waitForTimeout(2000); // Extra wait for SPA update
+        // Wait for SPA to swap in the next page of cards
+        await page
+          .waitForFunction(
+            ({ sel, prev }) => {
+              const el = document.querySelector(sel) as HTMLElement | null;
+              return !!el && el.innerText !== prev;
+            },
+            { sel: selectors.card, prev: prevFirstCard },
+            { timeout: 5000, polling: 250 },
+          )
+          .catch(() => undefined);
       } else {
         break;
       }

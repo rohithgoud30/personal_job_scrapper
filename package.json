@@ -1,35 +1,36 @@
 {
-  "name": "cli-test",
+  "name": "personal-job-scrapper",
   "version": "1.0.0",
-  "description": "Headful hourly Kforce scraper scaffold using Playwright + TypeScript.",
+  "description": "Scrapes job boards and filters listings with Jev + gpt-6-luna.",
   "main": "dist/index.js",
   "scripts": {
+    "auth:login": "ts-node src/lib/codexAuth.ts login",
+    "auth:status": "ts-node src/lib/codexAuth.ts status",
+    "auth:logout": "ts-node src/lib/codexAuth.ts logout",
     "build": "tsc --project tsconfig.json",
     "start": "ts-node src/index.ts",
     "start:once": "ts-node src/index.ts --once",
-    "smoke:kforce": "ts-node src/smoke/kforceSmoke.ts",
-    "smoke:randstad": "ts-node src/smoke/randstadSmoke.ts",
-    "smoke:kforce:keyword": "ts-node scripts/runSingleKeyword.ts",
-    "typecheck": "tsc --noEmit --project tsconfig.json"
+    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "smoke:ai": "ts-node scripts/aiSmoke.ts"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "rohithgoud30",
+  "license": "MIT",
   "type": "commonjs",
   "dependencies": {
-    "@fast-csv/format": "^5.0.5",
-    "@fast-csv/parse": "^5.0.5",
-    "@google/genai": "^1.45.0",
-    "dotenv": "^17.2.3",
-    "fast-csv": "^5.0.5",
-    "node-cron": "^4.2.1",
-    "openai": "^6.9.0",
-    "playwright": "^1.56.1",
+    "@fast-csv/format": "^5.0.7",
+    "@fast-csv/parse": "^5.0.7",
+    "@google/genai": "^2.24.0",
+    "dotenv": "^18.0.4",
+    "fast-csv": "^5.0.7",
+    "node-cron": "^4.6.0",
+    "openai": "^7.23.0",
+    "playwright": "^1.63.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@types/node": "^24.10.1",
+    "@types/node": "^26.6.3",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   }
 }

@@ -47,7 +47,6 @@ export async function runKforceSite(
   options: RunOptions = {}
 ): Promise<void> {
   const resumeSessionId = options.resumeSessionId?.trim();
-  const skipBatchDelay = Boolean(options.skipBatchPause);
   const keywords = normalizeKeywords(site.search.criteria.searchKeywords);
 
   if (!resumeSessionId && !keywords.length) {
@@ -131,8 +130,7 @@ export async function runKforceSite(
         staged,
         sessionPaths.sessionId,
         runDate,
-        isBackfill,
-        skipBatchDelay
+        isBackfill
       );
 
       if (!staged.size) {
@@ -227,15 +225,9 @@ async function scrapeKeywordsInBatches(
   staged: Map<string, SessionRole>,
   sessionId: string,
   runDate: Date,
-  isBackfill: boolean,
-  skipBatchDelay: boolean
+  isBackfill: boolean
 ): Promise<void> {
   const batchSize = env.keywordBatchSize;
-  if (skipBatchDelay) {
-    console.log(
-      "[kforce] Batch wait disabled; running keyword batches back-to-back."
-    );
-  }
 
   for (let i = 0; i < keywords.length; i += batchSize) {
     const batch = keywords.slice(i, i + batchSize);
@@ -253,14 +245,6 @@ async function scrapeKeywordsInBatches(
         )
       )
     );
-
-    const hasMoreBatches = i + batchSize < keywords.length;
-    if (!isBackfill && hasMoreBatches && !skipBatchDelay) {
-      console.log(
-        "[kforce] Sleeping 30s before next keyword batch (robots crawl-delay)."
-      );
-      await sleep(30);
-    }
   }
 }
 
@@ -331,7 +315,7 @@ async function scrapeKeyword(
   }
 
   await keywordInput.fill("");
-  await keywordInput.type(keyword, { delay: 20 });
+  await keywordInput.type(keyword);
 
   if (selectors.location && site.search.criteria.location) {
     await fillLocation(page, selectors.location, site.search.criteria.location);
@@ -345,7 +329,7 @@ async function scrapeKeyword(
 
   await Promise.all([
     page.waitForLoadState("networkidle").catch(() => undefined),
-    submitButton.click({ delay: 50 }),
+    submitButton.click(),
   ]);
 
   const cardSelector = selectors.card ?? FALLBACK_SELECTORS.card;
@@ -491,13 +475,11 @@ async function evaluateDetailedJobs(
         waitUntil: "domcontentloaded",
         timeout: 60000,
       });
+      // Poll until the description renders (>= 500 chars) or ~40s elapses.
+      const deadline = Date.now() + 40000;
       let description = await extractDescription(page);
-      if (description.length < 500) {
-        await page.waitForTimeout(10000);
-        description = await extractDescription(page);
-      }
-      if (description.length < 500) {
-        await page.waitForTimeout(30000);
+      while (description.length < 500 && Date.now() < deadline) {
+        await page.waitForTimeout(500);
         description = await extractDescription(page);
       }
       console.log(
@@ -787,7 +769,7 @@ async function fillLocation(
     .press("Meta+a")
     .catch(() => page.keyboard.press("Control+a"));
   await page.keyboard.press("Backspace");
-  await locationInput.type(value, { delay: 30 });
+  await locationInput.type(value);
   await page.keyboard.press("Enter");
 }
 

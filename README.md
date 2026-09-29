@@ -13,6 +13,9 @@ cd personal_job_scrapper
 pnpm install
 pnpm exec playwright install chromium
 
+# Optional: log in with ChatGPT to use gpt-6-luna as the second opinion (opens the browser)
+pnpm auth:login
+
 # Configure environment
 cp .env.example .env
 # Edit .env with your API keys and configuration (see Configuration section)
@@ -23,11 +26,11 @@ pnpm start -- --site=corptocorp
 
 ## 📋 Prerequisites
 
-- **Node.js** v18 or higher
+- **Node.js** v22 or higher
 - **pnpm** (install via `corepack enable` or `npm i -g pnpm`)
 - **Git**
-- **DeepInfra API Key** (for NVIDIA models via DeepInfra)
-- **Gemini API Key** (if using Gemini as provider or fallback)
+- **TypeSafe API Key** (Jev judges titles and job descriptions)
+- Optional: **ChatGPT account** (`pnpm auth:login`) for `gpt-6-luna`, or a DeepInfra/Gemini API key, as the second opinion when Jev is unsure
 
 ## ⚙️ Configuration
 
@@ -44,17 +47,21 @@ cp .env.example .env
 Edit `.env` with **all required** settings:
 
 ```env
-# DeepInfra provider (OpenAI-compatible)
-AI_API_KEY=your-deepinfra-api-key
+# Jev (TypeSafe) judges every title (one call per batch) and every job description (one call per listing)
+TYPESAFE_API_KEY=your-typesafe-api-key
+
+# Second opinion when Jev is unsure: "none" (default), "codex", "deepinfra", or "gemini"
+# codex = gpt-6-luna via your ChatGPT login from `pnpm auth:login` (no API key)
+AI_PROVIDER=codex
+
+# Optional: DeepInfra (only when AI_PROVIDER=deepinfra)
+AI_API_KEY=
 AI_BASE_URL=https://api.deepinfra.com/v1/openai
 AI_MODEL=nvidia/NVIDIA-Nemotron-3-Super-120B-A12B
 
-# Gemini provider
-GEMINI_API_KEY=your-gemini-api-key
+# Optional: Gemini (only when AI_PROVIDER=gemini)
+GEMINI_API_KEY=
 GEMINI_MODEL=gemini-2.5-flash
-
-# Provider mode: "deepinfra", "gemini", or "both" (deepinfra primary, gemini fallback)
-AI_DEFAULT_PROVIDER=both
 
 # Batch Size Configuration
 TITLE_BATCH_SIZE=50
@@ -69,12 +76,13 @@ TEST_RUN_DATE=
 
 | Variable              | Description                                                     | Required |
 | --------------------- | --------------------------------------------------------------- | -------- |
-| `AI_API_KEY`          | DeepInfra API key                                               | ✅ Yes   |
-| `AI_BASE_URL`         | DeepInfra endpoint URL                                          | ✅ Yes   |
-| `AI_MODEL`            | NVIDIA model name                                               | ✅ Yes   |
-| `GEMINI_API_KEY`      | Gemini API key                                                  | ✅ Yes   |
-| `GEMINI_MODEL`        | Gemini model name                                               | ✅ Yes   |
-| `AI_DEFAULT_PROVIDER` | `deepinfra`, `gemini`, or `both` (deepinfra primary + fallback) | ✅ Yes   |
+| `TYPESAFE_API_KEY`    | TypeSafe API key for Jev                                        | ✅ Yes   |
+| `AI_PROVIDER`         | Second opinion: `none` (default), `codex`, `deepinfra`, `gemini` | ❌ No    |
+| `AI_API_KEY`          | DeepInfra API key                                               | deepinfra |
+| `AI_BASE_URL`         | DeepInfra endpoint URL                                          | deepinfra |
+| `AI_MODEL`            | DeepInfra model name                                            | deepinfra |
+| `GEMINI_API_KEY`      | Gemini API key                                                  | gemini   |
+| `GEMINI_MODEL`        | Gemini model name                                               | gemini   |
 | `TITLE_BATCH_SIZE`    | Jobs per AI title filter batch                                  | ✅ Yes   |
 | `KEYWORD_BATCH_SIZE`  | Parallel keyword searches                                       | ✅ Yes   |
 | `AI_RETRY_DELAY_MS`   | Retry delay in milliseconds                                     | ✅ Yes   |
@@ -108,16 +116,25 @@ Edit `config.json` → `sharedSearchKeywords` with your target job keywords:
 
 You can also set **per-site keywords** in each site's `search.criteria.searchKeywords` array.
 
+Each site's `run` block also takes:
+
+| Key                     | Meaning                                                                                   |
+| ----------------------- | ----------------------------------------------------------------------------------------- |
+| `maxPages`              | Result pages to read per keyword                                                          |
+| `maxConcurrentSearches` | Optional cap on parallel searches (default `KEYWORD_BATCH_SIZE`). Nvoids uses `1` because its search stalls when searches overlap. |
+
 ---
 
 ### 3. AI Prompts (config.json)
 
 The AI uses two prompts in `config.json` → `ai.prompts`:
 
-| Prompt             | Purpose                                 |
-| ------------------ | --------------------------------------- |
-| `titleFilter`      | Stage 1: Quickly filter job titles      |
-| `detailEvaluation` | Stage 2: Evaluate full job descriptions |
+| Prompt             | Purpose                                                                 |
+| ------------------ | ----------------------------------------------------------------------- |
+| `titleFilter`      | Stage 1: rules for filtering titles                                     |
+| `detailEvaluation` | Stage 2: rules for each full job description                            |
+
+These arrays are the only place the rules live. Jev returns one of a fixed set of reasons (stack, seniority, location, local-only, visa, experience, employment type), and each reason means "what `policy` rejects", so editing the rules here is enough. The "Return JSON …" lines are for the second-opinion model.
 
 ---
 
@@ -236,9 +253,6 @@ pnpm start
 # Re-run AI evaluation on existing session
 pnpm start -- --site=corptocorp --session=session-2025-11-19T03-23-05-227Z
 
-# Skip delays between keyword batches (use sparingly)
-pnpm start -- --site=corptocorp --fast
-
 # Override keywords for specific search
 pnpm start -- --site=vanguard --keywords "java,python,react"
 
@@ -252,7 +266,7 @@ TEST_RUN_DATE=2025-11-14 pnpm start -- --site=kforce
 | -------------- | -------------- | ------------ | ------------------------------------------------------ |
 | **Dice**       | ⚡⚡⚡ Fastest | OPT/STEM OPT | Bulk extraction, "Today" (robust parsing) + "Contract" |
 | **CorpToCorp** | ⚡⚡⚡ Fastest | OPT/STEM OPT | C2C listings, auto-sorts by date                       |
-| **Kforce**     | ⚡ Slower      | OPT/STEM OPT | Contract roles, 30s crawl-delay required               |
+| **Kforce**     | ⚡⚡ Fast      | OPT/STEM OPT | Contract roles                                         |
 | **Randstad**   | ⚡⚡ Fast      | OPT/STEM OPT | Contract/Temp jobs                                     |
 | **Vanguard**   | ⚡⚡ Fast      | OPT/STEM OPT | Financial services, auto-sorts newest                  |
 | **Nvoids**     | ⚡⚡ Fast      | OPT/STEM OPT | Aggregator, "Today" filter (IST/EST)                   |
@@ -265,11 +279,11 @@ TEST_RUN_DATE=2025-11-14 pnpm start -- --site=kforce
 └─────────────┘
        ↓
 ┌─────────────┐
-│ AI Filter 1 │ → Remove irrelevant titles (Data/BI/Legacy/QA)
+│ Jev titles  │ → Removes irrelevant titles in batches
 └─────────────┘
        ↓
 ┌─────────────┐
-│ AI Filter 2 │ → Evaluate full job descriptions
+│ Jev final   │ → Jev reads each full job description (1 call per listing)
 └─────────────┘   ✓ Tech stack match (React/Node/Java/Python)
        ↓          ✓ Experience: 5 to <6 years
 ┌─────────────┐   ✓ Visa requirements (OPT/STEM for every site)
@@ -279,16 +293,22 @@ TEST_RUN_DATE=2025-11-14 pnpm start -- --site=kforce
 
 ### AI Filtering Rules
 
-**Stage 1: Title Filter** (uses configured provider via `AI_DEFAULT_PROVIDER`)
+**How Jev and your model work together:** Jev judges every title and every job description and returns the probability that it should be rejected. Clear cases (under 30% or at least 70%) are decided by Jev. Unsure cases (30–70%) go to the model you set in `AI_PROVIDER` (`codex` = `gpt-6-luna` via ChatGPT OAuth, `deepinfra`, or `gemini`). With `AI_PROVIDER=none`, or if the model call fails, Jev decides at 50%.
+
+**Stage 1: Title Filter** (Jev: one call per batch, one question per title; unsure titles go to the model in one call)
 
 - Removes: Data Engineer, BI/Analytics, QA/SDET, .NET, C#, Go, Legacy Tech
 - Keeps: Modern web/full-stack roles
 - Customize rules in `config.json` → `ai.prompts.titleFilter`
 
-**Stage 2: Detail Evaluation** (uses configured provider, with fallback when set to `both`)
+**Stage 2: Final Decision** (Jev: one call per listing, reads the full description; unsure listings go to the model)
 
-- **Fallback Logic**: When `AI_DEFAULT_PROVIDER=both`, automatically falls back from DeepInfra to Gemini on failure.
-- Customize rules in `config.json` → `ai.prompts.detailEvaluation`
+- Customize rules in `config.json` → `ai.prompts.detailEvaluation` (sent to Jev as the policy)
+
+**ChatGPT login (for `gpt-6-luna`)**
+
+
+- `pnpm auth:login` signs in with ChatGPT in the browser (same OAuth flow as Codex CLI / OpenCode) and saves tokens to `~/.personal_job_scrapper/auth.json`. Tokens refresh automatically. Check with `pnpm auth:status`, remove with `pnpm auth:logout`.
 
 - ✅ **Tech Stack**: React, Angular, Next.js, Node.js, Java/Spring Boot, Python/FastAPI
 - ✅ **Experience**: Min <= 5 years (e.g., "3-5 years", "5+", "5 years"). Accepts parallel experience.
@@ -322,8 +342,18 @@ corptocorp,Java Full Stack Engineer,CorpToCorp,,2025-11-18 19:12:00,https://...,
 
 ### "No sites matched the provided --site filter"
 
-- Check that the site key is correct: `corptocorp`, `kforce`, or `randstadusa`
+- Check that the site key is correct: `dice`, `corptocorp`, `kforce`, `randstadusa`, `vanguard`, or `nvoids`
 - Ensure `config.json` is valid JSON
+
+### Check the AI setup
+
+```bash
+pnpm smoke:ai   # offline checks + one live title filter and one live Jev decision
+```
+
+### "Not logged in to ChatGPT"
+
+Only needed when `AI_PROVIDER=codex`. Run `pnpm auth:login`. Until then, unsure cases fall back to Jev.
 
 ### "ProcessSingleton" error
 
@@ -350,5 +380,6 @@ MIT License - see LICENSE file for details
 
 ## 🙏 Acknowledgments
 
+- [Jev](https://typesafe.ai) by [TypeSafe](https://docs.typesafe.ai), a System One model that turns natural language into fast, typed, calibrated judgments
 - [Playwright](https://playwright.dev/) for browser automation
 - [TypeScript](https://www.typescriptlang.org/) for type safety

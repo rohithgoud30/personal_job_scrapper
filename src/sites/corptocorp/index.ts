@@ -19,7 +19,6 @@ import {
 } from "../../lib/session";
 import { getEasternDateLabel, getEasternTimeLabel } from "../../lib/time";
 import { env, getRunDateOverride } from "../../lib/env";
-import { sleep } from "../../lib/throttle";
 import {
   evaluateJobDetail,
   findIrrelevantJobIds,
@@ -40,7 +39,6 @@ export async function runCorpToCorpSite(
   options: RunOptions = {}
 ): Promise<void> {
   const resumeSessionId = options.resumeSessionId?.trim();
-  const skipBatchDelay = Boolean(options.skipBatchPause);
   const keywords = normalizeKeywords(site.search.criteria.searchKeywords);
 
   if (!resumeSessionId && !keywords.length) {
@@ -124,8 +122,7 @@ export async function runCorpToCorpSite(
         staged,
         sessionPaths.sessionId,
         runDate,
-        isBackfill,
-        skipBatchDelay
+        isBackfill
       );
 
       if (!staged.size) {
@@ -220,15 +217,9 @@ async function scrapeKeywordsInBatches(
   staged: Map<string, SessionRole>,
   sessionId: string,
   runDate: Date,
-  isBackfill: boolean,
-  skipBatchDelay: boolean
+  isBackfill: boolean
 ): Promise<void> {
   const batchSize = env.keywordBatchSize;
-  if (skipBatchDelay) {
-    console.log(
-      "[corptocorp] Batch wait disabled; running keyword batches back-to-back."
-    );
-  }
 
   for (let i = 0; i < keywords.length; i += batchSize) {
     const batch = keywords.slice(i, i + batchSize);
@@ -246,17 +237,6 @@ async function scrapeKeywordsInBatches(
         )
       )
     );
-
-    const hasMoreBatches = i + batchSize < keywords.length;
-    if (!isBackfill && hasMoreBatches && !skipBatchDelay) {
-      const delay = site.run.keywordDelaySeconds ?? 0;
-      if (delay > 0) {
-        console.log(
-          `[corptocorp] Sleeping ${delay}s before next keyword batch.`
-        );
-        await sleep(delay);
-      }
-    }
   }
 }
 
@@ -354,7 +334,7 @@ async function dismissPopup(page: Page, keyword: string): Promise<void> {
       if (await closeBtn.isVisible()) {
         console.log(`${logPrefix} Found close button. Clicking...`);
         await closeBtn.click();
-        await page.waitForTimeout(500);
+        await modal.waitFor({ state: "hidden", timeout: 500 }).catch(() => {});
       }
     }
 
@@ -390,7 +370,10 @@ async function dismissPopup(page: Page, keyword: string): Promise<void> {
     if (await notYetBtn.isVisible()) {
       console.log(`${logPrefix} Dismissing notification popup ("NOT YET")...`);
       await notYetBtn.click();
-      await page.waitForTimeout(500);
+      await notYetBtn
+        .first()
+        .waitFor({ state: "hidden", timeout: 500 })
+        .catch(() => {});
     }
 
     // 3. Important Notice Popup ("Okay")
@@ -400,7 +383,10 @@ async function dismissPopup(page: Page, keyword: string): Promise<void> {
     if (await okayBtn.isVisible()) {
       console.log(`${logPrefix} Dismissing Important Notice popup ("Okay")...`);
       await okayBtn.click();
-      await page.waitForTimeout(500);
+      await okayBtn
+        .first()
+        .waitFor({ state: "hidden", timeout: 500 })
+        .catch(() => {});
     }
   } catch (e) {
     console.warn(`${logPrefix} Error in dismissPopup:`, e);
@@ -413,6 +399,32 @@ async function expectModalToVanish(locator: Locator) {
   } catch {
     console.warn("[corptocorp] Modal did not vanish quickly after dismissal.");
   }
+}
+
+const TABLE_BODY = "table#ipt-posts-table tbody";
+
+async function tableText(page: Page): Promise<string> {
+  return page.evaluate(
+    (sel) => (document.querySelector(sel) as HTMLElement | null)?.innerText ?? "",
+    TABLE_BODY
+  );
+}
+
+// Resolves once the results table re-renders; on timeout just continue.
+async function waitForTableChange(
+  page: Page,
+  before: string,
+  timeout: number
+): Promise<void> {
+  await page
+    .waitForFunction(
+      ([sel, prev]) =>
+        ((document.querySelector(sel) as HTMLElement | null)?.innerText ??
+          "") !== prev,
+      [TABLE_BODY, before] as const,
+      { timeout }
+    )
+    .catch(() => {});
 }
 
 async function scrapeKeyword(
@@ -430,9 +442,10 @@ async function scrapeKeyword(
       "[corptocorp] Search input not found. Scraping all visible jobs."
     );
   } else {
+    const before = await tableText(page);
     await searchInput.fill(keyword);
     // Wait for table to update - DataTables usually updates on input
-    await page.waitForTimeout(2000);
+    await waitForTableChange(page, before, 5000);
   }
 
   await ensureDateSort(page, keyword);
@@ -492,8 +505,9 @@ async function collectListingRows(
       (await nextBtn.isVisible()) &&
       !(await nextBtn.getAttribute("class"))?.includes("disabled")
     ) {
+      const before = await tableText(page);
       await nextBtn.click();
-      await page.waitForTimeout(2000); // Wait for next page load
+      await waitForTableChange(page, before, 10000); // Wait for next page load
       pageIndex++;
     } else {
       break;
@@ -762,8 +776,9 @@ async function ensureDateSort(page: Page, keyword: string): Promise<void> {
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           await dismissPopup(page, keyword);
+          const before = await tableText(page);
           await dateHeader.click({ timeout: 5000 });
-          await page.waitForTimeout(1000);
+          await waitForTableChange(page, before, 1000);
           break; // Success
         } catch (err) {
           console.warn(
@@ -778,8 +793,9 @@ async function ensureDateSort(page: Page, keyword: string): Promise<void> {
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
             await dismissPopup(page, keyword);
+            const before = await tableText(page);
             await dateHeader.click({ timeout: 5000 });
-            await page.waitForTimeout(1000);
+            await waitForTableChange(page, before, 1000);
             break;
           } catch (err) {
             console.warn(

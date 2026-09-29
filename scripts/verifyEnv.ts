@@ -1,16 +1,18 @@
 import { env } from "../src/lib/env";
 
 console.log("Verifying Environment Variables:");
-console.log(`AI_MODEL: ${env.aiModel}`);
-console.log(`AI_BASE_URL: ${env.aiBaseUrl}`);
-console.log(`GEMINI_MODEL: ${env.geminiModel}`);
-console.log(`AI_DEFAULT_PROVIDER: ${env.aiDefaultProvider}`);
+console.log(`AI_PROVIDER: ${env.aiProvider}`);
+console.log(`TYPESAFE_API_KEY: ${env.typesafeApiKey ? "set" : "MISSING"}`);
 
-const validProviders = ["deepinfra", "gemini", "both"];
-if (!validProviders.includes(env.aiDefaultProvider)) {
+const validProviders = ["none", "codex", "deepinfra", "gemini"];
+if (!validProviders.includes(env.aiProvider)) {
   console.error(
-    `FAILURE: AI_DEFAULT_PROVIDER must be one of: ${validProviders.join(", ")}. Got: '${env.aiDefaultProvider}'`
+    `FAILURE: AI_PROVIDER must be one of: ${validProviders.join(", ")}. Got: '${env.aiProvider}'`
   );
+  process.exit(1);
+}
+if (!env.typesafeApiKey) {
+  console.error("FAILURE: TYPESAFE_API_KEY is required for the Jev final decision.");
   process.exit(1);
 }
 

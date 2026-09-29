@@ -216,9 +216,6 @@ function parseSiteFilter(): Set<string> | undefined {
 const siteFilter = parseSiteFilter();
 const shouldSchedule = process.argv.includes("--schedule");
 const runOptions: RunOptions = {
-  skipBatchPause:
-    process.argv.includes("--skip-batch-wait") ||
-    process.argv.includes("--fast"),
   resumeSessionId: getArgValue("--resume-session") ?? getArgValue("--session"),
   keywords: parseKeywords(),
 };

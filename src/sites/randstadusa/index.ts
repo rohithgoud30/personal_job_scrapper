@@ -19,7 +19,6 @@ import {
 } from "../../lib/session";
 import { getEasternDateLabel, getEasternTimeLabel } from "../../lib/time";
 import { env, getRunDateOverride } from "../../lib/env";
-import { sleep } from "../../lib/throttle";
 import {
   evaluateJobDetail,
   findIrrelevantJobIds,
@@ -59,7 +58,6 @@ export async function runRandstadSite(
   options: RunOptions = {}
 ): Promise<void> {
   const resumeSessionId = options.resumeSessionId?.trim();
-  const skipBatchDelay = Boolean(options.skipBatchPause);
   const keywords = normalizeKeywords(site.search.criteria.searchKeywords);
   if (!resumeSessionId && !keywords.length) {
     console.warn("[randstad] No keywords configured. Skipping run.");
@@ -141,8 +139,7 @@ export async function runRandstadSite(
         staged,
         sessionPaths.sessionId,
         runDate,
-        isBackfill,
-        skipBatchDelay
+        isBackfill
       );
 
       if (!staged.size) {
@@ -238,15 +235,9 @@ async function scrapeKeywordsInBatches(
   staged: Map<string, SessionRole>,
   sessionId: string,
   runDate: Date,
-  isBackfill: boolean,
-  skipBatchDelay: boolean
+  isBackfill: boolean
 ): Promise<void> {
   const batchSize = env.keywordBatchSize;
-  if (skipBatchDelay) {
-    console.log(
-      "[randstad] Batch wait disabled; running keyword batches back-to-back."
-    );
-  }
 
   for (let i = 0; i < keywords.length; i += batchSize) {
     const batch = keywords.slice(i, i + batchSize);
@@ -264,14 +255,6 @@ async function scrapeKeywordsInBatches(
         )
       )
     );
-
-    const hasMoreBatches = i + batchSize < keywords.length;
-    if (!isBackfill && hasMoreBatches && !skipBatchDelay) {
-      console.log(
-        "[randstad] Sleeping 25s before next keyword batch (polite crawl)."
-      );
-      await sleep(25);
-    }
   }
 }
 
@@ -408,10 +391,6 @@ async function collectRolesWithLoadMore(
       break;
     }
 
-    await page
-      .waitForTimeout(site.run.pageDelaySeconds * 1000)
-      .catch(() => undefined);
-
     const afterHits = await extractHits(page);
     const afterDom = await extractDomRows(page, site);
     const nextCount = afterHits.length || afterDom.length;
@@ -446,7 +425,7 @@ async function loadMore(
   }
 
   try {
-    await button.click({ delay: 30 });
+    await button.click();
   } catch (error) {
     console.warn(`[randstad][${keyword}] Load more click failed once.`, error);
     return false;
@@ -837,12 +816,9 @@ async function evaluateDetailedJobs(
         timeout: 60000,
       });
       let description = await extractDescription(page);
-      if (description.length < 500) {
-        await page.waitForTimeout(10000);
-        description = await extractDescription(page);
-      }
-      if (description.length < 500) {
-        await page.waitForTimeout(30000);
+      const descDeadline = Date.now() + 40000;
+      while (description.length < 500 && Date.now() < descDeadline) {
+        await page.waitForTimeout(500);
         description = await extractDescription(page);
       }
       console.log(
@@ -1007,7 +983,7 @@ async function fillKeyword(
     throw new Error("Keyword input not found.");
   }
   await input.fill("");
-  await input.type(keyword, { delay: 20 });
+  await input.type(keyword);
 }
 
 async function fillLocation(
@@ -1020,12 +996,12 @@ async function fillLocation(
   if ((await input.count()) === 0) {
     return;
   }
-  await input.click({ delay: 20 });
+  await input.click();
   await page.keyboard
     .press("Meta+a")
     .catch(() => page.keyboard.press("Control+a"));
   await page.keyboard.press("Backspace");
-  await input.type(value, { delay: 20 });
+  await input.type(value);
   await page.keyboard.press("Enter");
 }
 
@@ -1054,7 +1030,7 @@ async function applyContractFilter(page: Page): Promise<void> {
   }
 
   await trigger?.scrollIntoViewIfNeeded().catch(() => undefined);
-  await trigger?.click({ delay: 30 }).catch(() => undefined);
+  await trigger?.click().catch(() => undefined);
 
   const popover = page.locator('[data-rs-popover="jobType"]').first();
   await popover

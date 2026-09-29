@@ -6,48 +6,47 @@ export interface CookieResult {
   via?: string;
 }
 
+// How long to wait for a consent banner to appear before assuming there is none.
+const BANNER_TIMEOUT_MS = 3000;
+
 export async function acceptCookieConsent(
   page: Page,
   cookieConfig?: CookieConsentConfig
 ): Promise<CookieResult> {
-  if (!cookieConfig) {
+  const buttons = page.locator('button, [role="button"]');
+  const candidates = [
+    ...(cookieConfig?.buttonSelectors ?? []).map((selector) => ({
+      via: selector,
+      locator: page.locator(selector).first(),
+    })),
+    ...(cookieConfig?.textMatches ?? []).map((text) => ({
+      via: text,
+      locator: buttons.filter({ hasText: new RegExp(text, 'i') }).first(),
+    })),
+  ];
+  if (!candidates.length) {
     return { clicked: false };
   }
 
-  if (cookieConfig.waitForSeconds && cookieConfig.waitForSeconds > 0) {
-    await page.waitForTimeout(cookieConfig.waitForSeconds * 1000);
+  // Resolves as soon as any consent button is visible.
+  const any = candidates.map((c) => c.locator).reduce((a, b) => a.or(b));
+  const appeared = await any
+    .first()
+    .waitFor({ state: 'visible', timeout: BANNER_TIMEOUT_MS })
+    .then(() => true, () => false);
+  if (!appeared) {
+    return { clicked: false };
   }
 
-  const selectors = cookieConfig.buttonSelectors ?? [];
-  for (const selector of selectors) {
+  for (const { via, locator } of candidates) {
+    if (!(await locator.isVisible())) continue;
     try {
-      const locator = page.locator(selector).first();
-      if (await locator.isVisible({ timeout: 1500 })) {
-        await locator.click({ timeout: 3000 });
-        console.log(`[cookies] Accepted via selector: ${selector}`);
-        return { clicked: true, via: selector };
-      }
+      await locator.click({ timeout: 3000 });
+      console.log(`[cookies] Accepted via: ${via}`);
+      return { clicked: true, via };
     } catch (error) {
-      console.warn(`[cookies] Failed to interact with selector ${selector}`, error);
+      console.warn(`[cookies] Failed to click consent button (${via})`, error);
     }
   }
-
-  const textMatches = cookieConfig.textMatches ?? [];
-  if (textMatches.length > 0) {
-    const buttons = page.locator('button, [role="button"]');
-    for (const text of textMatches) {
-      const locator = buttons.filter({ hasText: new RegExp(text, 'i') }).first();
-      try {
-        if (await locator.isVisible({ timeout: 1500 })) {
-          await locator.click({ timeout: 3000 });
-          console.log(`[cookies] Accepted via text match: ${text}`);
-          return { clicked: true, via: text };
-        }
-      } catch (error) {
-        console.warn(`[cookies] Failed to click button with text ${text}`, error);
-      }
-    }
-  }
-
   return { clicked: false };
 }

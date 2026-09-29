@@ -124,10 +124,7 @@
         }
       },
       "run": {
-        "maxPages": 2,
-        "throttleSeconds": 8,
-        "pageDelaySeconds": 30,
-        "keywordDelaySeconds": 30
+        "maxPages": 2
       },
       "disallowPatterns": [
         "apply-online",
@@ -140,8 +137,7 @@
           "button#onetrust-accept-btn-handler",
           "button:has-text(\"Accept\")"
         ],
-        "textMatches": ["Accept All Cookies", "Accept"],
-        "waitForSeconds": 2
+        "textMatches": ["Accept All Cookies", "Accept"]
       }
     },
     {
@@ -187,10 +183,7 @@
         }
       },
       "run": {
-        "maxPages": 2,
-        "throttleSeconds": 5,
-        "pageDelaySeconds": 8,
-        "keywordDelaySeconds": 10
+        "maxPages": 2
       },
       "disallowPatterns": [
         "/apply/",
@@ -211,8 +204,7 @@
           "button:has-text(\"accept all cookies\")",
           "button:has-text(\"accept all\")"
         ],
-        "textMatches": ["Accept All Cookies", "Accept"],
-        "waitForSeconds": 2
+        "textMatches": ["Accept All Cookies", "Accept"]
       }
     },
     {
@@ -247,16 +239,12 @@
         }
       },
       "run": {
-        "maxPages": 5,
-        "throttleSeconds": 5,
-        "pageDelaySeconds": 5,
-        "keywordDelaySeconds": 1
+        "maxPages": 5
       },
       "disallowPatterns": [],
       "cookieConsent": {
         "buttonSelectors": ["button:has-text('Okay')", "button:text('Okay')"],
-        "textMatches": ["Okay"],
-        "waitForSeconds": 2
+        "textMatches": ["Okay"]
       }
     },
     {
@@ -295,10 +283,7 @@
         }
       },
       "run": {
-        "maxPages": 2,
-        "throttleSeconds": 5,
-        "pageDelaySeconds": 5,
-        "keywordDelaySeconds": 10
+        "maxPages": 2
       },
       "disallowPatterns": [],
       "cookieConsent": {
@@ -306,8 +291,7 @@
           "#onetrust-accept-btn-handler",
           "button#onetrust-accept-btn-handler"
         ],
-        "textMatches": ["Accept All Cookies", "Accept"],
-        "waitForSeconds": 2
+        "textMatches": ["Accept All Cookies", "Accept"]
       }
     },
     {
@@ -352,10 +336,7 @@
         }
       },
       "run": {
-        "maxPages": 2,
-        "throttleSeconds": 5,
-        "pageDelaySeconds": 5,
-        "keywordDelaySeconds": 10
+        "maxPages": 2
       },
       "disallowPatterns": [],
       "cookieConsent": {
@@ -363,8 +344,7 @@
           "#onetrust-accept-btn-handler",
           "button#onetrust-accept-btn-handler"
         ],
-        "textMatches": ["Accept All Cookies", "Accept"],
-        "waitForSeconds": 2
+        "textMatches": ["Accept All Cookies", "Accept"]
       }
     },
     {
@@ -400,15 +380,12 @@
       },
       "run": {
         "maxPages": 5,
-        "throttleSeconds": 5,
-        "pageDelaySeconds": 5,
-        "keywordDelaySeconds": 10
+        "maxConcurrentSearches": 1
       },
       "disallowPatterns": [],
       "cookieConsent": {
         "buttonSelectors": [],
-        "textMatches": [],
-        "waitForSeconds": 2
+        "textMatches": []
       }
     }
   ],

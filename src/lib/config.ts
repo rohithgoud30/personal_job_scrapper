@@ -92,15 +92,13 @@ export interface SearchSelectors {
 
 export interface RunConfig {
   maxPages: number;
-  throttleSeconds: number;
-  pageDelaySeconds: number;
-  keywordDelaySeconds?: number;
+  /** Cap on parallel keyword searches for sites that stall under overlap (default KEYWORD_BATCH_SIZE). */
+  maxConcurrentSearches?: number;
 }
 
 export interface CookieConsentConfig {
   buttonSelectors?: string[];
   textMatches?: string[];
-  waitForSeconds?: number;
 }
 
 const DEFAULT_CONFIG = path.resolve(process.cwd(), "config.json");

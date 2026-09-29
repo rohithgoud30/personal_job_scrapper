@@ -19,7 +19,6 @@ import {
 } from "../../lib/session";
 import { getEasternDateLabel, getEasternTimeLabel } from "../../lib/time";
 import { env, getRunDateOverride } from "../../lib/env";
-import { sleep } from "../../lib/throttle";
 import {
   evaluateJobDetail,
   findIrrelevantJobIds,
@@ -40,7 +39,6 @@ export async function runVanguardSite(
   options: RunOptions = {}
 ): Promise<void> {
   const resumeSessionId = options.resumeSessionId?.trim();
-  const skipBatchDelay = Boolean(options.skipBatchPause);
   const rawKeywords = options.keywords?.length
     ? options.keywords
     : site.search.criteria.searchKeywords;
@@ -131,8 +129,7 @@ export async function runVanguardSite(
         staged,
         sessionPaths.sessionId,
         runDate,
-        isBackfill,
-        skipBatchDelay
+        isBackfill
       );
 
       if (!staged.size) {
@@ -227,15 +224,9 @@ async function scrapeKeywordsInBatches(
   staged: Map<string, SessionRole>,
   sessionId: string,
   runDate: Date,
-  isBackfill: boolean,
-  skipBatchDelay: boolean
+  isBackfill: boolean
 ): Promise<void> {
   const batchSize = env.keywordBatchSize;
-  if (skipBatchDelay) {
-    console.log(
-      "[vanguard] Batch wait disabled; running keyword batches back-to-back."
-    );
-  }
 
   for (let i = 0; i < keywords.length; i += batchSize) {
     const batch = keywords.slice(i, i + batchSize);
@@ -253,14 +244,6 @@ async function scrapeKeywordsInBatches(
         )
       )
     );
-
-    const hasMoreBatches = i + batchSize < keywords.length;
-    if (!isBackfill && hasMoreBatches && !skipBatchDelay) {
-      console.log(
-        "[vanguard] Sleeping 30s before next keyword batch (robots crawl-delay)."
-      );
-      await sleep(30);
-    }
   }
 }
 
@@ -328,7 +311,7 @@ async function scrapeKeyword(
   }
 
   await keywordInput.fill("");
-  await keywordInput.type(keyword, { delay: 20 });
+  await keywordInput.type(keyword);
 
   const submitButton = page.locator(selectors.submit).first();
   if ((await submitButton.count()) === 0) {
@@ -337,7 +320,7 @@ async function scrapeKeyword(
     );
   }
 
-  await submitButton.click({ delay: 50, noWaitAfter: true });
+  await submitButton.click({ noWaitAfter: true });
   await page.waitForLoadState("networkidle").catch(() => undefined);
 
   if (selectors.card) {
